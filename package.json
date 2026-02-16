@@ -386,7 +386,7 @@
     "@types/semver": "^7.7.1",
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
-    "@typescript-eslint/parser": "^5.62.0",
+    "@typescript-eslint/parser": "^8.56.0",
     "@vscode/vsce": "^3.7.1",
     "eslint": "^8.57.1",
     "husky": "^9.1.7",
