@@ -693,12 +693,17 @@ export function mapGasToAst(
   }
 
   function offsetToLine(offset: number): number {
-    for (let i = 0; i < lineOffsets.length - 1; i++) {
-      if (offset >= lineOffsets[i] && offset < lineOffsets[i + 1]) {
-        return i + 1; // 1-based line number
+    let lo = 0;
+    let hi = lineOffsets.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1;
+      if (lineOffsets[mid] <= offset) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
       }
     }
-    return lines.length;
+    return lo + 1; // 1-based
   }
 
   // Track the current contract name as we walk the AST
@@ -969,12 +974,17 @@ function extractFunctionsWithRegex(source: string): GasInfo[] {
   }
 
   function offsetToLine(offset: number): number {
-    for (let i = 0; i < lineOffsets.length - 1; i++) {
-      if (offset >= lineOffsets[i] && offset < lineOffsets[i + 1]) {
-        return i + 1;
+    let lo = 0;
+    let hi = lineOffsets.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1;
+      if (lineOffsets[mid] <= offset) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
       }
     }
-    return lines.length;
+    return lo + 1; // 1-based
   }
 
   // Regex to match function declarations
@@ -1046,7 +1056,7 @@ function extractFunctionsWithRegex(source: string): GasInfo[] {
   const constructorRegex = /constructor\s*\(([^)]*)\)\s*(public|internal)?\s*(payable)?\s*[{]/gs;
   let constructorMatch;
   while ((constructorMatch = constructorRegex.exec(source)) !== null) {
-    const [paramsStr, visibility = 'public', payable] = constructorMatch;
+    const [, paramsStr, visibility = 'public', payable] = constructorMatch;
     const startOffset = constructorMatch.index;
 
     const params = paramsStr

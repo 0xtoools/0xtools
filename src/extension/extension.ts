@@ -106,43 +106,16 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  compilationService.on('compilation:success', ({ uri, output }) => {
+  compilationService.on('compilation:success', ({ output }) => {
     logger.info(`Compilation successful: ${output.gasInfo.length} functions analyzed`);
     statusBarItem.text = '$(flame) Gas Analysis';
-
-    // Update decorations for the active editor
-    const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === uri);
-    if (editor && output.gasInfo.length > 0) {
-      const decorations = realtimeAnalyzer.createRemixStyleDecorations(
-        output.gasInfo,
-        editor.document
-      );
-      editor.setDecorations(gasDecorationType, decorations);
-    }
+    // Decorations are applied by updateDecorations() which awaits compile() — no need to duplicate here
   });
 
-  compilationService.on('compilation:error', ({ uri, errors, output }) => {
+  compilationService.on('compilation:error', ({ errors }) => {
     logger.error(`Compilation failed: ${errors[0]}`);
     statusBarItem.text = '$(flame) Gas Analysis';
-
-    // Even on error, we may have fallback gasInfo with selectors
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fallbackOutput = output as any;
-    if (fallbackOutput?.gasInfo?.length > 0) {
-      const editor = vscode.window.visibleTextEditors.find(
-        (e) => e.document.uri.toString() === uri
-      );
-      if (editor) {
-        const decorations = realtimeAnalyzer.createRemixStyleDecorations(
-          fallbackOutput.gasInfo,
-          editor.document
-        );
-        editor.setDecorations(gasDecorationType, decorations);
-        logger.warn(
-          `Applied ${decorations.length} selector-only decorations (fallback from compilation error)`
-        );
-      }
-    }
+    // Fallback decorations are applied by updateDecorations() which handles compilation errors
   });
 
   compilationService.on('version:downloading', ({ version }) => {
@@ -735,11 +708,17 @@ export function activate(context: vscode.ExtensionContext) {
   // The primary pipeline (updateDecorations -> compilationService.compile ->
   // createRemixStyleDecorations) handles all decoration updates.
 
-  // Real-time analysis on text change
+  // Real-time analysis on text change (debounced to avoid excessive calls during typing)
+  let textChangeTimer: NodeJS.Timeout | undefined;
   const textChangeDisposable = vscode.workspace.onDidChangeTextDocument(async (event) => {
     const editor = vscode.window.activeTextEditor;
     if (editor && editor.document === event.document) {
-      await updateDecorations(editor);
+      if (textChangeTimer) {
+        clearTimeout(textChangeTimer);
+      }
+      textChangeTimer = setTimeout(() => {
+        updateDecorations(editor);
+      }, 300); // 300ms debounce on keystroke changes
     }
   });
 

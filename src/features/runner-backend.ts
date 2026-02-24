@@ -198,7 +198,11 @@ export async function compileWithRunner(
 
     for (const report of reports) {
       for (const func of report.functions) {
-        const meta = sourceMeta.get(func.name);
+        // Try exact signature match first, then fall back to name-based lookup
+        const meta =
+          sourceMeta.get(func.signature) ||
+          [...sourceMeta.values()].find((m) => m.selector === func.selector) ||
+          [...sourceMeta.entries()].find(([sig]) => sig.startsWith(func.name + '('))?.[1];
 
         const warnings: string[] = [];
         let gas: number | 'infinite' = func.gas;
@@ -298,12 +302,17 @@ function extractFunctionMetadata(source: string): Map<
   }
 
   function offsetToLine(offset: number): number {
-    for (let i = 0; i < lineOffsets.length - 1; i++) {
-      if (offset >= lineOffsets[i] && offset < lineOffsets[i + 1]) {
-        return i + 1;
+    let lo = 0;
+    let hi = lineOffsets.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1;
+      if (lineOffsets[mid] <= offset) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
       }
     }
-    return lines.length;
+    return lo + 1; // 1-based
   }
 
   // Matches function declarations including those with custom modifiers (onlyOwner, nonReentrant, etc.)
@@ -346,9 +355,9 @@ function extractFunctionMetadata(source: string): Map<
     const hash = keccak256(signature);
     const selector = '0x' + hash.substring(0, 8);
 
-    // Only store the first occurrence (don't overwrite overloads)
-    if (!result.has(name)) {
-      result.set(name, {
+    // Use signature as key to handle overloaded functions correctly
+    if (!result.has(signature)) {
+      result.set(signature, {
         loc: {
           line: offsetToLine(startOffset),
           endLine: offsetToLine(endOffset),
@@ -375,12 +384,17 @@ function extractEventMetadata(source: string): GasInfo[] {
     lineOffsets.push(lineOffsets[i] + lines[i].length + 1);
   }
   function offsetToLine(offset: number): number {
-    for (let i = 0; i < lineOffsets.length - 1; i++) {
-      if (offset >= lineOffsets[i] && offset < lineOffsets[i + 1]) {
-        return i + 1;
+    let lo = 0;
+    let hi = lineOffsets.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1;
+      if (lineOffsets[mid] <= offset) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
       }
     }
-    return lines.length;
+    return lo + 1; // 1-based
   }
 
   const eventRegex = /event\s+(\w+)\s*\(([^)]*)\)\s*;/gs;
@@ -428,9 +442,10 @@ function fallbackResult(filePath: string, source: string, errorMessage: string):
   const meta = extractFunctionMetadata(src);
   const gasInfo: GasInfo[] = [];
 
-  for (const [name, data] of meta) {
+  for (const [sig, data] of meta) {
+    const fnName = sig.substring(0, sig.indexOf('('));
     gasInfo.push({
-      name,
+      name: fnName || sig,
       selector: data.selector,
       gas: 0,
       loc: data.loc,

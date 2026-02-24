@@ -170,7 +170,7 @@ function runForgeBuild(projectRoot: string): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(
       'forge',
-      ['build', '--force', '--extra-output', 'evm.gasEstimates'],
+      ['build', '--extra-output', 'evm.gasEstimates'],
       { cwd: projectRoot, timeout: 120_000 },
       (err, _stdout, stderr) => {
         if (err) {
@@ -308,16 +308,21 @@ function findFunctionLines(source: string): Map<string, { line: number; endLine:
   }
 
   function offsetToLine(offset: number): number {
-    for (let i = 0; i < lineOffsets.length - 1; i++) {
-      if (offset >= lineOffsets[i] && offset < lineOffsets[i + 1]) {
-        return i + 1;
+    let lo = 0;
+    let hi = lineOffsets.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1;
+      if (lineOffsets[mid] <= offset) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
       }
     }
-    return lines.length;
+    return lo + 1; // 1-based
   }
 
   const fnRegex =
-    /function\s+(\w+)\s*\([^)]*\)\s*(?:public|external|internal|private)?\s*(?:pure|view|payable|nonpayable)?\s*(?:virtual)?\s*(?:override(?:\([^)]*\))?)?\s*(?:returns\s*\([^)]*\))?\s*[{;]/gs;
+    /function\s+(\w+)\s*\([^)]*\)\s*(?:public|external|internal|private)?\s*(?:pure|view|payable|nonpayable)?[^{;]*[{;]/gs;
 
   let match;
   while ((match = fnRegex.exec(source)) !== null) {
@@ -380,16 +385,21 @@ function extractFunctionsForFallback(source: string): GasInfo[] {
   }
 
   function offsetToLine(offset: number): number {
-    for (let i = 0; i < lineOffsets.length - 1; i++) {
-      if (offset >= lineOffsets[i] && offset < lineOffsets[i + 1]) {
-        return i + 1;
+    let lo = 0;
+    let hi = lineOffsets.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1;
+      if (lineOffsets[mid] <= offset) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
       }
     }
-    return lines.length;
+    return lo + 1; // 1-based
   }
 
   const fnRegex =
-    /function\s+(\w+)\s*\(([^)]*)\)\s*(public|external|internal|private)?\s*(pure|view|payable|nonpayable)?\s*(?:virtual)?\s*(?:override(?:\([^)]*\))?)?\s*(?:returns\s*\([^)]*\))?\s*[{;]/gs;
+    /function\s+(\w+)\s*\(([^)]*?)\)\s*(public|external|internal|private)?\s*(pure|view|payable|nonpayable)?[^{;]*[{;]/gs;
 
   let match;
   while ((match = fnRegex.exec(source)) !== null) {

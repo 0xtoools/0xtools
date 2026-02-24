@@ -85,12 +85,15 @@ export class AnalysisEngine extends EventEmitter {
   private parser: SolidityParser;
   private diagnosticCollection: vscode.DiagnosticCollection;
   private analysisCache: Map<string, { timestamp: number; analysis: LiveAnalysis }>;
-  private solcResultsCache: Map<string, LiveAnalysis>;
-  private signatureCache: Map<string, LiveAnalysis>;
+  private solcResultsCache: Map<string, { analysis: LiveAnalysis; timestamp: number }>;
+  private signatureCache: Map<string, { analysis: LiveAnalysis; timestamp: number }>;
   private idleTimers: Map<string, NodeJS.Timeout>;
   private activeSolcCompilations: Map<string, boolean>;
   private analysisInProgress = false;
   private extendedAnalysisInProgress = false;
+  private _evictionInterval: NodeJS.Timeout | undefined;
+  private static readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  private static readonly MAX_CACHE_SIZE = 50;
 
   // Extended analyzers (lazy-loaded on first use via dynamic import())
   private _storageAnalyzer: StorageLayoutAnalyzer | null = null;
@@ -109,6 +112,9 @@ export class AnalysisEngine extends EventEmitter {
     this.analysisCache = new Map();
     this.solcResultsCache = new Map();
     this.signatureCache = new Map();
+
+    // Periodically evict stale cache entries (every 60s)
+    this._evictionInterval = setInterval(() => this.evictStaleCacheEntries(), 60_000);
     this.idleTimers = new Map();
     this.activeSolcCompilations = new Map();
   }
@@ -164,9 +170,13 @@ export class AnalysisEngine extends EventEmitter {
 
     this.analysisCache.delete(uri);
 
-    const solcCached = this.solcResultsCache.get(contentHash);
-    if (solcCached && !solcCached.isPending) {
-      return solcCached;
+    const solcEntry = this.solcResultsCache.get(contentHash);
+    if (
+      solcEntry &&
+      !solcEntry.analysis.isPending &&
+      Date.now() - solcEntry.timestamp < AnalysisEngine.CACHE_TTL_MS
+    ) {
+      return solcEntry.analysis;
     }
 
     const signatureAnalysis = this.createSignatureOnlyAnalysis(document, contentHash);
@@ -184,9 +194,13 @@ export class AnalysisEngine extends EventEmitter {
     const content = document.getText();
     const contentHash = this.hashContent(content);
 
-    const solcCached = this.solcResultsCache.get(contentHash);
-    if (solcCached && !solcCached.isPending) {
-      return solcCached;
+    const solcEntry = this.solcResultsCache.get(contentHash);
+    if (
+      solcEntry &&
+      !solcEntry.analysis.isPending &&
+      Date.now() - solcEntry.timestamp < AnalysisEngine.CACHE_TTL_MS
+    ) {
+      return solcEntry.analysis;
     }
 
     const signatureAnalysis = this.createSignatureOnlyAnalysis(document, contentHash);
@@ -198,14 +212,18 @@ export class AnalysisEngine extends EventEmitter {
     const content = document.getText();
     const contentHash = this.hashContent(content);
 
-    const solcCached = this.solcResultsCache.get(contentHash);
-    if (solcCached && !solcCached.isPending) {
-      return solcCached;
+    const solcEntry = this.solcResultsCache.get(contentHash);
+    if (
+      solcEntry &&
+      !solcEntry.analysis.isPending &&
+      Date.now() - solcEntry.timestamp < AnalysisEngine.CACHE_TTL_MS
+    ) {
+      return solcEntry.analysis;
     }
 
-    const sigCached = this.signatureCache.get(contentHash);
-    if (sigCached) {
-      return sigCached;
+    const sigEntry = this.signatureCache.get(contentHash);
+    if (sigEntry && Date.now() - sigEntry.timestamp < AnalysisEngine.CACHE_TTL_MS) {
+      return sigEntry.analysis;
     }
 
     return null;
@@ -222,9 +240,9 @@ export class AnalysisEngine extends EventEmitter {
     document: vscode.TextDocument,
     contentHash: string
   ): LiveAnalysis {
-    const cached = this.signatureCache.get(contentHash);
-    if (cached) {
-      return cached;
+    const cachedEntry = this.signatureCache.get(contentHash);
+    if (cachedEntry && Date.now() - cachedEntry.timestamp < AnalysisEngine.CACHE_TTL_MS) {
+      return cachedEntry.analysis;
     }
 
     const content = document.getText();
@@ -295,7 +313,16 @@ export class AnalysisEngine extends EventEmitter {
       isPending: true,
     };
 
-    this.signatureCache.set(contentHash, analysis);
+    // Evict if cache is too large
+    if (this.signatureCache.size >= AnalysisEngine.MAX_CACHE_SIZE) {
+      const oldest = [...this.signatureCache.entries()].sort(
+        (a, b) => a[1].timestamp - b[1].timestamp
+      );
+      for (let i = 0; i < Math.ceil(oldest.length * 0.2); i++) {
+        this.signatureCache.delete(oldest[i][0]);
+      }
+    }
+    this.signatureCache.set(contentHash, { analysis, timestamp: Date.now() });
     return analysis;
   }
 
@@ -339,8 +366,12 @@ export class AnalysisEngine extends EventEmitter {
     const uri = document.uri.toString();
     const content = document.getText();
 
-    const cached = this.solcResultsCache.get(contentHash);
-    if (cached && !cached.isPending) {
+    const cachedEntry = this.solcResultsCache.get(contentHash);
+    if (
+      cachedEntry &&
+      !cachedEntry.analysis.isPending &&
+      Date.now() - cachedEntry.timestamp < AnalysisEngine.CACHE_TTL_MS
+    ) {
       return;
     }
 
@@ -420,7 +451,16 @@ export class AnalysisEngine extends EventEmitter {
         gasInfo: [],
       };
 
-      this.solcResultsCache.set(contentHash, analysis);
+      // Evict if cache is too large
+      if (this.solcResultsCache.size >= AnalysisEngine.MAX_CACHE_SIZE) {
+        const oldest = [...this.solcResultsCache.entries()].sort(
+          (a, b) => a[1].timestamp - b[1].timestamp
+        );
+        for (let i = 0; i < Math.ceil(oldest.length * 0.2); i++) {
+          this.solcResultsCache.delete(oldest[i][0]);
+        }
+      }
+      this.solcResultsCache.set(contentHash, { analysis, timestamp: Date.now() });
 
       this.emit('analysisReady', { uri, analysis } as AnalysisReadyEvent);
     } catch (error) {
@@ -755,6 +795,10 @@ export class AnalysisEngine extends EventEmitter {
   // ─── Dispose ───────────────────────────────────────────────────────────────
 
   public dispose(): void {
+    if (this._evictionInterval) {
+      clearInterval(this._evictionInterval);
+    }
+
     for (const timer of this.idleTimers.values()) {
       clearTimeout(timer);
     }
@@ -770,6 +814,23 @@ export class AnalysisEngine extends EventEmitter {
     this.signatureCache.clear();
 
     compilationService.dispose();
+  }
+
+  /**
+   * Evict stale entries from solcResultsCache and signatureCache (TTL-based).
+   */
+  private evictStaleCacheEntries(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.solcResultsCache) {
+      if (now - entry.timestamp > AnalysisEngine.CACHE_TTL_MS) {
+        this.solcResultsCache.delete(key);
+      }
+    }
+    for (const [key, entry] of this.signatureCache) {
+      if (now - entry.timestamp > AnalysisEngine.CACHE_TTL_MS) {
+        this.signatureCache.delete(key);
+      }
+    }
   }
 
   private createEmptyAnalysis(isPending = false): LiveAnalysis {

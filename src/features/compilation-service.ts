@@ -276,6 +276,10 @@ export class CompilationService extends EventEmitter {
         this.emit('compilation:start', { uri, version: 'runner' });
         try {
           output = await compileWithRunner(filePath, source);
+          // If runner returned a fallback (success: false), clear output so next tier is tried
+          if (output && !output.success) {
+            output = null;
+          }
         } catch {
           // Runner failed — fall through to forge/solc
           output = null;
@@ -285,7 +289,15 @@ export class CompilationService extends EventEmitter {
       // --- Priority 2: Forge backend (Foundry projects) ---
       if (!output && foundryRoot && (await isForgeAvailable())) {
         this.emit('compilation:start', { uri, version: 'forge' });
-        output = await compileWithForge(filePath!, foundryRoot);
+        try {
+          output = await compileWithForge(filePath!, foundryRoot);
+          // If forge returned a fallback (success: false), clear output so solc is tried
+          if (output && !output.success) {
+            output = null;
+          }
+        } catch {
+          output = null;
+        }
       }
 
       // --- Priority 3: Solc-js (WASM, universal fallback) ---

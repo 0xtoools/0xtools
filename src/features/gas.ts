@@ -197,6 +197,10 @@ export class GasEstimator {
     fileContent?: string
   ): Promise<GasEstimate> {
     if (!this.useSolc || !filePath) {
+      // Solc unavailable — fall back to heuristic if we have function code
+      if (functionCode) {
+        return this.estimateGasHeuristic(functionCode, signature);
+      }
       const hash = keccak256(signature);
       const selector = '0x' + hash.substring(0, 8);
       return {
@@ -205,15 +209,22 @@ export class GasEstimator {
         selector,
         estimatedGas: { min: 0, max: 0, average: 0 },
         complexity: 'low',
-        factors: ['Solc unavailable - cannot estimate'],
+        factors: ['Solc unavailable - install solc for accurate estimation'],
         warning: 'Install solc for gas estimation',
-        source: 'solc',
+        source: 'heuristic',
       };
     }
 
     const solcEstimate = await this.estimateGasWithSolc(filePath, signature, fileContent);
     if (solcEstimate) {
       return solcEstimate;
+    }
+
+    // Solc compilation failed — fall back to heuristic if we have function code
+    if (functionCode) {
+      const heuristic = this.estimateGasHeuristic(functionCode, signature);
+      heuristic.factors.unshift('Solc compilation failed - using heuristic');
+      return heuristic;
     }
 
     const hash = keccak256(signature);
@@ -224,9 +235,9 @@ export class GasEstimator {
       selector,
       estimatedGas: { min: 0, max: 0, average: 0 },
       complexity: 'low',
-      factors: ['Compilation failed'],
+      factors: ['Compilation failed - no function body available for heuristic'],
       warning: 'Could not compile contract - check for errors',
-      source: 'solc',
+      source: 'heuristic',
     };
   }
 
@@ -285,11 +296,27 @@ export class GasEstimator {
       }
     }
 
+    // Fall back to heuristic for functions that solc couldn't analyze
     for (const func of functions) {
       if (!estimates.find((e) => e.signature === func.signature)) {
-        console.warn(
-          `No solc estimate available for ${func.signature} - skipping heuristic fallback`
-        );
+        const funcBody = this.extractFunctionBody(contractCode, func.name);
+        if (funcBody) {
+          const heuristic = this.estimateGasHeuristic(funcBody, func.signature);
+          heuristic.factors.unshift('Solc could not analyze - using heuristic');
+          estimates.push(heuristic);
+        } else {
+          const hash = keccak256(func.signature);
+          const selector = '0x' + hash.substring(0, 8);
+          estimates.push({
+            function: func.signature,
+            signature: func.signature,
+            selector,
+            estimatedGas: { min: 0, max: 0, average: 0 },
+            complexity: 'low',
+            factors: ['Solc could not analyze - function body not extractable'],
+            source: 'heuristic',
+          });
+        }
       }
     }
 
@@ -344,6 +371,38 @@ export class GasEstimator {
     report += `- **Unbounded Functions**: ${estimates.filter((e) => e.complexity === 'unbounded').length}\n`;
 
     return report;
+  }
+
+  /**
+   * Extract function body from contract source code by name.
+   * Uses brace-matching to find the full function body.
+   */
+  private extractFunctionBody(contractCode: string, functionName: string): string | null {
+    const pattern =
+      functionName === 'constructor'
+        ? /constructor\s*\([^)]*\)[^{]*\{/s
+        : new RegExp(`function\\s+${functionName}\\s*\\([^)]*\\)[^{]*\\{`, 's');
+
+    const match = pattern.exec(contractCode);
+    if (!match) {
+      return null;
+    }
+
+    const startIndex = match.index;
+    const braceStart = startIndex + match[0].length - 1; // position of '{'
+    let braceCount = 1;
+    let i = braceStart + 1;
+
+    while (i < contractCode.length && braceCount > 0) {
+      if (contractCode[i] === '{') {
+        braceCount++;
+      } else if (contractCode[i] === '}') {
+        braceCount--;
+      }
+      i++;
+    }
+
+    return contractCode.substring(startIndex, i);
   }
 
   public triggerCompilerUpgrade(_source: string, _onUpgrade?: (version: string) => void): void {
