@@ -1,3 +1,2 @@
 #!/bin/bash
-VERSION=$(node -p "require('./package.json').version")
-bun run compile && vsce package --no-dependencies && code --install-extension "sigscan-${VERSION}.vsix" --force
+VERSION=$(node -p "require('./package.json').version") && bun run compile && vsce package --no-dependencies && code --install-extension "sigscan-${VERSION}.vsix" --force
