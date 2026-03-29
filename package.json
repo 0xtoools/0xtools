@@ -602,7 +602,7 @@
   "dependencies": {
     "chokidar": "^3.5.3",
     "commander": "^9.4.1",
-    "glob": "^8.0.3",
+    "glob": "^13.0.0",
     "js-sha3": "^0.8.0",
     "semver": "^7.7.3",
     "solc": "^0.8.28"
