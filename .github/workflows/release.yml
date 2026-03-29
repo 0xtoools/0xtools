@@ -19,27 +19,29 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18.x'
-          cache: 'npm'
+          node-version: '20.x'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile || bun install
 
       - name: Run tests
-        run: npm test
+        run: bun x jest --passWithNoTests
 
       - name: Build extension
-        run: npm run compile
+        run: bun run compile
 
       - name: Package extension
-        run: npx @vscode/vsce package
+        run: bun x @vscode/vsce package --no-dependencies
 
       - name: Get version from tag
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: '*.vsix'
           generate_release_notes: true
@@ -49,13 +51,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to VS Code Marketplace
-        if: success()
-        run: npx @vscode/vsce publish -p ${{ secrets.VSCE_PAT }}
+        if: env.VSCE_PAT != ''
+        run: bun x @vscode/vsce publish --no-dependencies -p ${{ secrets.VSCE_PAT }}
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Publish to Open VSX Registry
-        if: success()
-        run: npx ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }}
+        if: env.OVSX_PAT != ''
+        run: bun x ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }}
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}

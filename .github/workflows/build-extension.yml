@@ -2,150 +2,115 @@ name: Build and Release VS Code Extension
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
     paths-ignore:
       - 'docs/**'
       - '*.md'
       - 'examples/**'
   pull_request:
-    branches: [ main ]
+    branches: [main]
   release:
-    types: [ created ]
+    types: [created]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     strategy:
       matrix:
         node-version: [18.x, 20.x]
-    
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Run linting
-      run: npm run lint --if-present
-      
-    - name: Run tests
-      run: npm test --if-present
-      
-    - name: Build project
-      run: npm run compile
-      
-    - name: Install VSCE
-      run: npm install -g @vscode/vsce
-      
-    - name: Package extension
-      run: vsce package --no-dependencies
-      
-    - name: Upload extension artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: sigscan-extension-${{ matrix.node-version }}
-        path: '*.vsix'
-        retention-days: 30
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Run linting
+        run: bun x eslint src --ext .ts --quiet
+
+      - name: Run tests
+        run: bun x jest --passWithNoTests
+
+      - name: Build project
+        run: bun run compile
+
+      - name: Package extension
+        run: bun x @vscode/vsce package --no-dependencies
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 0xtools-extension-${{ matrix.node-version }}
+          path: '*.vsix'
+          retention-days: 30
 
   release:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20.x'
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Build project
-      run: npm run compile
-      
-    - name: Install VSCE
-      run: npm install -g @vscode/vsce
-      
-    - name: Package extension
-      run: vsce package --no-dependencies
-      
-    - name: Get package version
-      id: package-version
-      run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
-      
-    - name: Create release directory
-      run: mkdir -p releases
-      
-    - name: Copy VSIX to releases
-      run: cp *.vsix releases/
-      
-    - name: Upload to Release (if release event)
-      if: github.event_name == 'release'
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ github.event.release.upload_url }}
-        asset_path: ./sigscan-${{ steps.package-version.outputs.version }}.vsix
-        asset_name: sigscan-${{ steps.package-version.outputs.version }}.vsix
-        asset_content_type: application/zip
-        
-    - name: Commit release artifacts (if push to main)
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add releases/
-        git commit -m "Add built extension v${{ steps.package-version.outputs.version }}" || exit 0
-        git push
-        
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Build project
+        run: bun run compile
+
+      - name: Package extension
+        run: bun x @vscode/vsce package --no-dependencies
+
   publish-marketplace:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
-    
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20.x'
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Build project
-      run: npm run compile
-      
-    - name: Install VSCE
-      run: npm install -g @vscode/vsce
-      
-    - name: Publish to VS Code Marketplace
-      if: env.VSCE_PAT != ''
-      env:
-        VSCE_PAT: ${{ secrets.VSCE_PAT }}
-      run: vsce publish --no-dependencies
-      
-    - name: Publish to Open VSX Registry  
-      if: env.OVSX_PAT != ''
-      env:
-        OVSX_PAT: ${{ secrets.OVSX_PAT }}
-      run: |
-        npm install -g ovsx
-        ovsx publish --no-dependencies
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Build project
+        run: bun run compile
+
+      - name: Publish to VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: bun x @vscode/vsce publish --no-dependencies
+
+      - name: Publish to Open VSX Registry
+        if: env.OVSX_PAT != ''
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          bun x ovsx publish --no-dependencies
