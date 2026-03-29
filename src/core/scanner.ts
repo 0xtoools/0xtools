@@ -4,6 +4,9 @@ import { glob } from 'glob';
 import { ProjectInfo, ContractInfo, ScanResult, ContractCategory } from '../types';
 import { SolidityParser } from './parser';
 
+// Pre-compiled regex for import extraction — hoisted to avoid per-call allocation
+const IMPORT_RE = /import\s+[^"]*"([^"]+)"/g;
+
 export interface SubProject {
   path: string;
   type: 'foundry' | 'hardhat' | 'solidity';
@@ -316,10 +319,10 @@ export class ProjectScanner {
    */
   private extractImports(content: string): string[] {
     const imports: string[] = [];
-    const importRegex = /import\s+[^"]*"([^"]+)"/g;
+    IMPORT_RE.lastIndex = 0;
     let match;
 
-    while ((match = importRegex.exec(content)) !== null) {
+    while ((match = IMPORT_RE.exec(content)) !== null) {
       imports.push(match[1]);
     }
 
@@ -490,13 +493,15 @@ export class ProjectScanner {
     contractName: string,
     contractFileContents: Map<string, string>
   ): boolean {
+    // Build inheritance regex once per call (not per file iteration)
+    const inheritancePattern = new RegExp(`contract\\s+\\w+\\s+is\\s+.*${contractName}`, 'i');
+
     for (const [, content] of contractFileContents) {
       // Check if this contract imports the given contract name
       if (content.includes(`import`) && content.includes(contractName)) {
         return true;
       }
       // Also check inheritance patterns
-      const inheritancePattern = new RegExp(`contract\\s+\\w+\\s+is\\s+.*${contractName}`, 'i');
       if (inheritancePattern.test(content)) {
         return true;
       }

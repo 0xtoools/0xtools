@@ -19,6 +19,17 @@ interface StateVariable {
   sizeBytes: number;
 }
 
+// Pre-compiled regex patterns — hoisted to module scope to avoid re-compilation per call
+const RE_STRIP_BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g;
+const RE_STRIP_LINE_COMMENT = /\/\/.*/g;
+const RE_NON_NEWLINE = /[^\n]/g;
+const RE_STATE_VAR_DECL =
+  /^\s*(mapping\s*\([^)]+\)|address|uint\d*|int\d*|bool|bytes\d*|string|bytes)\s+(?:public|private|internal)?\s*(\w+)/gm;
+const RE_CONSTANT_OR_IMMUTABLE = /\b(constant|immutable)\b/;
+const RE_STORAGE_GAP = /uint256\[\d+\]\s+(?:private\s+)?__gap/;
+const RE_STORAGE_GAP_SIZE = /uint256\[(\d+)\]\s+(?:private\s+)?__gap/;
+const RE_BYTES_N = /^bytes(\d+)$/;
+
 export class UpgradeAnalyzer {
   /**
    * Size in bytes for known Solidity value types.
@@ -250,8 +261,8 @@ export class UpgradeAnalyzer {
     }
 
     // Check for storage gaps
-    const oldHasGap = /uint256\[\d+\]\s+(?:private\s+)?__gap/.test(oldSource);
-    const newHasGap = /uint256\[\d+\]\s+(?:private\s+)?__gap/.test(newSource);
+    const oldHasGap = RE_STORAGE_GAP.test(oldSource);
+    const newHasGap = RE_STORAGE_GAP.test(newSource);
 
     if (oldHasGap && !newHasGap) {
       warnings.push(
@@ -262,8 +273,8 @@ export class UpgradeAnalyzer {
 
     if (oldHasGap && newHasGap) {
       // Check if gap size was reduced appropriately for new variables
-      const oldGapMatch = oldSource.match(/uint256\[(\d+)\]\s+(?:private\s+)?__gap/);
-      const newGapMatch = newSource.match(/uint256\[(\d+)\]\s+(?:private\s+)?__gap/);
+      const oldGapMatch = oldSource.match(RE_STORAGE_GAP_SIZE);
+      const newGapMatch = newSource.match(RE_STORAGE_GAP_SIZE);
 
       if (oldGapMatch && newGapMatch) {
         const oldGapSize = parseInt(oldGapMatch[1], 10);
@@ -303,23 +314,21 @@ export class UpgradeAnalyzer {
 
     // Strip comments to avoid false positives
     const cleanSource = source
-      .replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\n]/g, ' '))
-      .replace(/\/\/.*/g, '');
+      .replace(RE_STRIP_BLOCK_COMMENT, (match) => match.replace(RE_NON_NEWLINE, ' '))
+      .replace(RE_STRIP_LINE_COMMENT, '');
 
     // Match state variable declarations
-    // Handles: mapping(...) [visibility] name; | type [visibility] name [= ...];
-    const stateVarRegex =
-      /^\s*(mapping\s*\([^)]+\)|address|uint\d*|int\d*|bool|bytes\d*|string|bytes)\s+(?:public|private|internal)?\s*(\w+)/gm;
+    RE_STATE_VAR_DECL.lastIndex = 0;
 
     let match;
-    while ((match = stateVarRegex.exec(cleanSource)) !== null) {
+    while ((match = RE_STATE_VAR_DECL.exec(cleanSource)) !== null) {
       const fullLine = cleanSource.substring(
         cleanSource.lastIndexOf('\n', match.index) + 1,
         cleanSource.indexOf('\n', match.index)
       );
 
       // Skip constants and immutables
-      if (/\b(constant|immutable)\b/.test(fullLine)) {
+      if (RE_CONSTANT_OR_IMMUTABLE.test(fullLine)) {
         continue;
       }
 
@@ -446,7 +455,7 @@ export class UpgradeAnalyzer {
     }
 
     // Handle bytesN where N is 1-32
-    const bytesMatch = normalized.match(/^bytes(\d+)$/);
+    const bytesMatch = normalized.match(RE_BYTES_N);
     if (bytesMatch) {
       const n = parseInt(bytesMatch[1], 10);
       if (n >= 1 && n <= 32) {

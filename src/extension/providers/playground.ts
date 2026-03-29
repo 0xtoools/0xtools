@@ -55,7 +55,7 @@ export class PlaygroundPanel {
 
     const panel = vscode.window.createWebviewPanel(
       PlaygroundPanel.viewType,
-      'SigScan Playground',
+      '0xTools Playground',
       vscode.ViewColumn.Beside,
       {
         enableScripts: true,
@@ -194,7 +194,7 @@ export class PlaygroundPanel {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';" />
-  <title>SigScan Playground</title>
+  <title>0xTools Playground</title>
   <style nonce="${nonce}">
     :root {
       --bg: var(--vscode-editor-background);

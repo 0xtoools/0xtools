@@ -112,7 +112,7 @@ interface ForgeArtifact {
 /**
  * Run `forge build` and read the resulting artifacts for a given source file.
  *
- * Returns a `CompilationOutput` compatible with the rest of SigScan.
+ * Returns a `CompilationOutput` compatible with the rest of 0xTools.
  * On failure falls back to regex-based extraction (selectors only, gas: 0).
  */
 export async function compileWithForge(

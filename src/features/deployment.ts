@@ -38,6 +38,20 @@ export interface DeploymentAnalysis {
   recommendations: string[];
 }
 
+// Pre-compiled regex patterns — hoisted to module scope to avoid re-compilation per call
+const RE_BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g;
+const RE_LINE_COMMENT = /\/\/.*/g;
+const RE_WHITESPACE = /\s+/g;
+const RE_FUNCTION = /function\s+\w+/g;
+const RE_STATE_VAR =
+  /\b(uint|int|address|bool|bytes|mapping|string)\s+(?:public|private|internal)?\s*\w+/g;
+const RE_EVENT = /event\s+\w+/g;
+const RE_MODIFIER = /modifier\s+\w+/g;
+const RE_CONSTRUCTOR = /constructor\s*\([^)]*\)\s*[^{]*{([^}]*)}/s;
+const RE_STORAGE_WRITE = /\w+\s*=\s*[^;]+;/g;
+const RE_EXTERNAL_CALL = /\.\w+\(/g;
+const RE_LOOP = /\b(for|while)\s*\(/g;
+
 export class DeploymentCostEstimator {
   private readonly CREATE_GAS = 32000;
   private readonly CREATE2_GAS = 32000;
@@ -77,20 +91,20 @@ export class DeploymentCostEstimator {
   private estimateBytecodeSize(code: string): number {
     // Remove comments and whitespace
     const cleanCode = code
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/.*/g, '')
-      .replace(/\s+/g, ' ')
+      .replace(RE_BLOCK_COMMENT, '')
+      .replace(RE_LINE_COMMENT, '')
+      .replace(RE_WHITESPACE, ' ')
       .trim();
 
     // Count significant code elements
-    const functions = (cleanCode.match(/function\s+\w+/g) || []).length;
-    const stateVars = (
-      cleanCode.match(
-        /\b(uint|int|address|bool|bytes|mapping|string)\s+(?:public|private|internal)?\s*\w+/g
-      ) || []
-    ).length;
-    const events = (cleanCode.match(/event\s+\w+/g) || []).length;
-    const modifiers = (cleanCode.match(/modifier\s+\w+/g) || []).length;
+    RE_FUNCTION.lastIndex = 0;
+    RE_STATE_VAR.lastIndex = 0;
+    RE_EVENT.lastIndex = 0;
+    RE_MODIFIER.lastIndex = 0;
+    const functions = (cleanCode.match(RE_FUNCTION) || []).length;
+    const stateVars = (cleanCode.match(RE_STATE_VAR) || []).length;
+    const events = (cleanCode.match(RE_EVENT) || []).length;
+    const modifiers = (cleanCode.match(RE_MODIFIER) || []).length;
 
     // Rough heuristic: base + per-element costs
     let estimatedSize = 100; // Base contract overhead
@@ -110,7 +124,7 @@ export class DeploymentCostEstimator {
    * Estimate init code size (constructor + creation)
    */
   private estimateInitCodeSize(code: string): number {
-    const constructorMatch = code.match(/constructor\s*\([^)]*\)\s*[^{]*{([^}]*)}/s);
+    const constructorMatch = code.match(RE_CONSTRUCTOR);
 
     if (!constructorMatch) {
       return 100; // Minimal init code
@@ -126,25 +140,28 @@ export class DeploymentCostEstimator {
    * Estimate constructor execution gas
    */
   private estimateConstructorGas(code: string): number {
-    const constructorMatch = code.match(/constructor\s*\([^)]*\)\s*[^{]*{([^}]*)}/s);
+    const constructorMatch2 = code.match(RE_CONSTRUCTOR);
 
-    if (!constructorMatch) {
+    if (!constructorMatch2) {
       return 21000; // Base transaction cost only
     }
 
-    const constructorBody = constructorMatch[1];
+    const constructorBody = constructorMatch2[1];
     let gas = 21000; // Base transaction cost
 
     // Count storage writes (expensive!)
-    const storageWrites = (constructorBody.match(/\w+\s*=\s*[^;]+;/g) || []).length;
+    RE_STORAGE_WRITE.lastIndex = 0;
+    const storageWrites = (constructorBody.match(RE_STORAGE_WRITE) || []).length;
     gas += storageWrites * 20000; // SSTORE ~20k gas
 
     // Count external calls
-    const externalCalls = (constructorBody.match(/\.\w+\(/g) || []).length;
+    RE_EXTERNAL_CALL.lastIndex = 0;
+    const externalCalls = (constructorBody.match(RE_EXTERNAL_CALL) || []).length;
     gas += externalCalls * 10000; // External calls
 
     // Count loops (can be unbounded)
-    const loops = (constructorBody.match(/\b(for|while)\s*\(/g) || []).length;
+    RE_LOOP.lastIndex = 0;
+    const loops = (constructorBody.match(RE_LOOP) || []).length;
     gas += loops * 50000; // Conservative estimate for loops
 
     return gas;

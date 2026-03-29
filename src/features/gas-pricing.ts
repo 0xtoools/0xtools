@@ -9,6 +9,7 @@
  */
 
 import * as https from 'https';
+import * as http from 'http';
 import { GasPrice } from '../types';
 
 /** Configuration for a supported chain. */
@@ -29,8 +30,12 @@ interface CacheEntry {
 /** Default cache time-to-live in milliseconds (60 seconds). */
 const DEFAULT_CACHE_TTL_MS = 60_000;
 
-/** HTTP request timeout in milliseconds. */
-const REQUEST_TIMEOUT_MS = 10_000;
+/** HTTP request timeout in milliseconds (5s — gas price RPCs are fast). */
+const REQUEST_TIMEOUT_MS = 5_000;
+
+/** Keep-alive HTTP agents, reused across requests. */
+const gasPricingHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 4 });
+const gasPricingHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 4 });
 
 export class GasPricingService {
   private readonly chains: Map<string, ChainConfig>;
@@ -245,20 +250,24 @@ export class GasPricingService {
       });
 
       const url = new URL(rpcUrl);
+      const isHttps = url.protocol === 'https:';
+      const mod = isHttps ? https : http;
 
       const options: https.RequestOptions = {
         hostname: url.hostname,
-        port: url.port || 443,
+        port: url.port || (isHttps ? 443 : 80),
         path: url.pathname + url.search,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body),
+          Connection: 'keep-alive',
         },
+        agent: isHttps ? gasPricingHttpsAgent : gasPricingHttpAgent,
         timeout: REQUEST_TIMEOUT_MS,
       };
 
-      const req = https.request(options, (res) => {
+      const req = mod.request(options, (res) => {
         let data = '';
 
         res.on('data', (chunk: Buffer | string) => {

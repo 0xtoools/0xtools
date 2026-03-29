@@ -26,6 +26,9 @@ interface CacheEntry {
 export class SignatureCache {
   private cache: Map<string, CacheEntry> = new Map();
   private maxSize = 100;
+  private ttlMs = 10 * 60 * 1000; // 10 minute TTL
+  private hits = 0;
+  private misses = 0;
 
   /**
    * Get cached signatures for a file
@@ -33,6 +36,14 @@ export class SignatureCache {
   public get(filePath: string, fileContent: string): CacheEntry | null {
     const entry = this.cache.get(filePath);
     if (!entry) {
+      this.misses++;
+      return null;
+    }
+
+    // TTL check
+    if (Date.now() - entry.lastModified > this.ttlMs) {
+      this.cache.delete(filePath);
+      this.misses++;
       return null;
     }
 
@@ -40,6 +51,7 @@ export class SignatureCache {
     if (entry.hash !== currentHash) {
       // File changed, invalidate cache
       this.cache.delete(filePath);
+      this.misses++;
       return null;
     }
 
@@ -47,6 +59,7 @@ export class SignatureCache {
     this.cache.delete(filePath);
     this.cache.set(filePath, entry);
 
+    this.hits++;
     return entry;
   }
 
@@ -95,10 +108,11 @@ export class SignatureCache {
    * Get cache statistics
    */
   public getStats(): { size: number; maxSize: number; hitRate: number } {
+    const total = this.hits + this.misses;
     return {
       size: this.cache.size,
       maxSize: this.maxSize,
-      hitRate: 0, // Would need to track hits/misses
+      hitRate: total > 0 ? this.hits / total : 0,
     };
   }
 

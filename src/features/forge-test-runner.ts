@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
 /**
  * Forge Test Runner — CodeLens provider for inline "Run Test" buttons
  *
@@ -8,7 +7,13 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
+import { execSync } from 'child_process';
 import { logger } from '../utils/logger';
+
+// Pre-compiled regexes for CodeLens (provideCodeLenses runs on every scroll/edit)
+const CONTRACT_PATTERN = /contract\s+(\w+)\s+is\s+Test/;
+const TEST_FN_PATTERN = /function\s+(test\w*)\s*\(/;
 
 interface TestResult {
   name: string;
@@ -43,9 +48,8 @@ export class ForgeTestCodeLensProvider implements vscode.CodeLensProvider {
     const fileResults = this.testResults.get(document.uri.toString());
 
     // Find test contract
-    const contractPattern = /contract\s+(\w+)\s+is\s+Test/;
     for (let i = 0; i < lines.length; i++) {
-      const contractMatch = contractPattern.exec(lines[i]);
+      const contractMatch = CONTRACT_PATTERN.exec(lines[i]);
       if (contractMatch) {
         const range = new vscode.Range(i, 0, i, lines[i].length);
 
@@ -62,9 +66,8 @@ export class ForgeTestCodeLensProvider implements vscode.CodeLensProvider {
     }
 
     // Find individual test functions
-    const testPattern = /function\s+(test\w*)\s*\(/;
     for (let i = 0; i < lines.length; i++) {
-      const testMatch = testPattern.exec(lines[i]);
+      const testMatch = TEST_FN_PATTERN.exec(lines[i]);
       if (testMatch) {
         const testName = testMatch[1];
         const range = new vscode.Range(i, 0, i, lines[i].length);
@@ -194,8 +197,6 @@ export class ForgeTestCodeLensProvider implements vscode.CodeLensProvider {
     testName: string,
     fileName: string
   ): Promise<TestResult | null> {
-    const { execSync } = require('child_process');
-
     try {
       const output = execSync(
         `forge test --match-test "${testName}" --match-path "${fileName}" --json 2>/dev/null`,
@@ -264,7 +265,7 @@ export class ForgeTestCodeLensProvider implements vscode.CodeLensProvider {
   private findProjectRoot(filePath: string): string | null {
     let dir = path.dirname(filePath);
     while (dir !== path.dirname(dir)) {
-      if (require('fs').existsSync(path.join(dir, 'foundry.toml'))) {
+      if (fs.existsSync(path.join(dir, 'foundry.toml'))) {
         return dir;
       }
       dir = path.dirname(dir);

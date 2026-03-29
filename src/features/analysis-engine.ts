@@ -343,7 +343,7 @@ export class AnalysisEngine extends EventEmitter {
             `Selector collision: ${selector} is shared by ${names}`,
             vscode.DiagnosticSeverity.Warning
           );
-          diag.source = 'SigScan';
+          diag.source = '0xTools';
           diagnostics.push(diag);
         }
       }
@@ -501,7 +501,7 @@ export class AnalysisEngine extends EventEmitter {
                   ? vscode.DiagnosticSeverity.Warning
                   : vscode.DiagnosticSeverity.Information
               );
-              diagnostic.source = 'SigScan Gas';
+              diagnostic.source = '0xTools Gas';
               diagnostics.push(diagnostic);
             }
           }
@@ -549,7 +549,7 @@ export class AnalysisEngine extends EventEmitter {
                   ? vscode.DiagnosticSeverity.Warning
                   : vscode.DiagnosticSeverity.Information
               );
-              diagnostic.source = 'SigScan Gas';
+              diagnostic.source = '0xTools Gas';
               diagnostics.push(diagnostic);
             }
           }

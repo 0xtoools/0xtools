@@ -1,6 +1,6 @@
-# SigScan Documentation Index
+# 0xTools Documentation Index
 
-Welcome to the SigScan documentation! This index helps you find the information you need.
+Welcome to the 0xTools documentation! This index helps you find the information you need.
 
 ## 📚 Documentation Overview
 

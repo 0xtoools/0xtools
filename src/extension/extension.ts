@@ -30,15 +30,43 @@ let remixGasDecorationType: vscode.TextEditorDecorationType;
 let statusBarItem: vscode.StatusBarItem;
 let gasDecorationManager: GasDecorationManager;
 
+// Lazy-loaded singletons for long-running services
+let _anvilManager: InstanceType<typeof import('../features/anvil-manager').AnvilManager> | null =
+  null;
+let _forkSimulator: InstanceType<typeof import('../features/fork-simulator').ForkSimulator> | null =
+  null;
+
+// Singleton RPC provider — shared across all on-chain commands
+let _rpcProvider: InstanceType<typeof import('../features/rpc-provider').RpcProvider> | null = null;
+function getRpcProvider(): InstanceType<typeof import('../features/rpc-provider').RpcProvider> {
+  if (!_rpcProvider) {
+    const { RpcProvider } = require('../features/rpc-provider');
+    _rpcProvider = new RpcProvider();
+    applyCustomRpcEndpoints(_rpcProvider);
+  }
+  return _rpcProvider!;
+}
+
+/** Apply user-configured custom RPC endpoints */
+function applyCustomRpcEndpoints(rpc: any): void {
+  try {
+    const vsc = require('vscode');
+    const config = vsc.workspace.getConfiguration('sigscan');
+    const custom: Record<string, string> = config.get('rpc.customEndpoints', {});
+    for (const [chain, url] of Object.entries(custom)) {
+      if (url) {
+        rpc.setEndpoint(chain, url);
+      }
+    }
+  } catch {
+    /* not in vscode context */
+  }
+}
+
 export function activate(context: vscode.ExtensionContext) {
   // Initialize structured logger
   logger.init(context);
-  logger.info('SigScan extension activated');
-
-  // Show visible notification
-  vscode.window.showInformationMessage(
-    ' SigScan Gas and Signature Analysis activated! Open a .sol file to see gas estimates.'
-  );
+  logger.info('0xTools extension activated');
 
   // Initialize manager
   sigScanManager = new SigScanManager(context);
@@ -52,20 +80,32 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize Remix-style gas decoration manager
   gasDecorationManager = GasDecorationManager.getInstance(300); // 300ms debounce
 
-  // Initialize remappings resolver (lazy-loaded)
-  const { RemappingsResolver } = require('../features/remappings');
-  const remappingsResolver = new RemappingsResolver();
+  // Remappings resolver — lazy-loaded on first compilation
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (workspaceRoot) {
-    remappingsResolver.load(workspaceRoot);
+  let _remappingsResolver: any = null;
+  function getRemappingsResolver() {
+    if (!_remappingsResolver) {
+      const { RemappingsResolver } = require('../features/remappings');
+      _remappingsResolver = new RemappingsResolver();
+      if (workspaceRoot) {
+        _remappingsResolver.load(workspaceRoot);
+      }
+    }
+    return _remappingsResolver;
   }
 
-  // Initialize forge test CodeLens provider (lazy-loaded)
-  const { ForgeTestCodeLensProvider } = require('../features/forge-test-runner');
-  const forgeTestProvider = new ForgeTestCodeLensProvider();
+  // Forge test CodeLens provider — lazy-loaded on first use
+  let _forgeTestProvider: any = null;
+  function getForgeTestProvider() {
+    if (!_forgeTestProvider) {
+      const { ForgeTestCodeLensProvider } = require('../features/forge-test-runner');
+      _forgeTestProvider = new ForgeTestCodeLensProvider();
+    }
+    return _forgeTestProvider;
+  }
   const codeLensDisposable = vscode.languages.registerCodeLensProvider(
     { scheme: 'file', language: 'solidity' },
-    forgeTestProvider
+    { provideCodeLenses: (doc, token) => getForgeTestProvider().provideCodeLenses(doc, token) }
   );
 
   // Create decoration types for gas and complexity hints
@@ -93,7 +133,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Create status bar item
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBarItem.text = '$(flame) Gas Analysis';
-  statusBarItem.tooltip = 'SigScan: Real-time gas analysis active';
+  statusBarItem.tooltip = '0xTools: Real-time gas analysis active';
   statusBarItem.command = 'sigscan.toggleRealtimeAnalysis';
   const initialConfig = vscode.workspace.getConfiguration('sigscan');
   if (initialConfig.get('realtimeAnalysis', true)) {
@@ -163,12 +203,12 @@ export function activate(context: vscode.ExtensionContext) {
 
     vscode.commands.registerCommand('sigscan.startWatching', () => {
       sigScanManager.startWatching();
-      vscode.window.showInformationMessage('SigScan: Started watching for file changes');
+      vscode.window.showInformationMessage('0xTools: Started watching for file changes');
     }),
 
     vscode.commands.registerCommand('sigscan.stopWatching', () => {
       sigScanManager.stopWatching();
-      vscode.window.showInformationMessage('SigScan: Stopped watching for file changes');
+      vscode.window.showInformationMessage('0xTools: Stopped watching for file changes');
     }),
 
     vscode.commands.registerCommand('sigscan.exportSignatures', async () => {
@@ -596,12 +636,12 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       'sigscan.forgeRunTest',
       async (uri: vscode.Uri, testName: string) => {
-        await forgeTestProvider.runTest(uri, testName);
+        await getForgeTestProvider().runTest(uri, testName);
       }
     ),
 
     vscode.commands.registerCommand('sigscan.forgeRunAllTests', async (uri: vscode.Uri) => {
-      await forgeTestProvider.runAllTests(uri);
+      await getForgeTestProvider().runAllTests(uri);
     }),
 
     // Security analysis reports
@@ -732,12 +772,862 @@ export function activate(context: vscode.ExtensionContext) {
       });
       await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
     }),
+
+    // Slither analysis
+    vscode.commands.registerCommand('sigscan.runSlither', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.document.languageId !== 'solidity') {
+        vscode.window.showErrorMessage('Open a Solidity file to analyze');
+        return;
+      }
+      const { SlitherIntegration } = require('../features/slither-integration');
+      const slither = new SlitherIntegration();
+
+      if (!(await slither.isAvailable())) {
+        vscode.window.showErrorMessage(
+          'Slither not found. Install with: pip install slither-analyzer'
+        );
+        return;
+      }
+
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Running Slither analysis...' },
+        async () => {
+          const findings = await slither.analyze(editor.document.uri.fsPath);
+          if (findings.length === 0) {
+            vscode.window.showInformationMessage('Slither: No issues found!');
+            return;
+          }
+
+          // Apply diagnostics
+          const diags = slither.toDiagnostics(findings);
+          const diagsByFile = new Map<string, vscode.Diagnostic[]>();
+          for (const d of diags) {
+            const fileKey = d.file || editor.document.uri.fsPath;
+            const existing = diagsByFile.get(fileKey) || [];
+            const severity =
+              d.severity === 'error'
+                ? vscode.DiagnosticSeverity.Error
+                : d.severity === 'warning'
+                  ? vscode.DiagnosticSeverity.Warning
+                  : d.severity === 'info'
+                    ? vscode.DiagnosticSeverity.Information
+                    : vscode.DiagnosticSeverity.Hint;
+            existing.push(
+              new vscode.Diagnostic(
+                new vscode.Range(Math.max(0, d.line - 1), 0, Math.max(0, d.line - 1), 999),
+                d.message,
+                severity
+              )
+            );
+            diagsByFile.set(fileKey, existing);
+          }
+
+          const report = slither.generateReport(findings);
+          const doc = await vscode.workspace.openTextDocument({
+            content: report,
+            language: 'markdown',
+          });
+          await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+        }
+      );
+    }),
+
+    // Mythril analysis
+    vscode.commands.registerCommand('sigscan.runMythril', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.document.languageId !== 'solidity') {
+        vscode.window.showErrorMessage('Open a Solidity file to analyze');
+        return;
+      }
+      const { MythrilIntegration } = require('../features/mythril-integration');
+      const mythril = new MythrilIntegration();
+
+      if (!(await mythril.isAvailable())) {
+        vscode.window.showErrorMessage('Mythril not found. Install with: pip install mythril');
+        return;
+      }
+
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Running Mythril analysis (this may take a while)...',
+          cancellable: true,
+        },
+        async () => {
+          const issues = await mythril.analyze(editor.document.uri.fsPath);
+          if (issues.length === 0) {
+            vscode.window.showInformationMessage('Mythril: No issues found!');
+            return;
+          }
+
+          const report = mythril.generateReport(issues);
+          const doc = await vscode.workspace.openTextDocument({
+            content: report,
+            language: 'markdown',
+          });
+          await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+        }
+      );
+    }),
+
+    // ─── On-Chain Features ────────────────────────────────────────────────
+
+    // Transaction inspector
+    vscode.commands.registerCommand('sigscan.inspectTransaction', async () => {
+      const chains = [
+        'ethereum',
+        'sepolia',
+        'polygon',
+        'arbitrum',
+        'optimism',
+        'bsc',
+        'base',
+        'avalanche',
+      ];
+      const chain = await vscode.window.showQuickPick(chains, {
+        placeHolder: 'Select chain',
+        title: 'Which chain is this transaction on?',
+      });
+      if (!chain) {
+        return;
+      }
+      const txHash = await vscode.window.showInputBox({
+        prompt: 'Enter transaction hash',
+        placeHolder: '0x...',
+        validateInput: (v) =>
+          /^0x[0-9a-fA-F]{64}$/.test(v) ? null : 'Invalid tx hash (must be 0x + 64 hex chars)',
+      });
+      if (!txHash) {
+        return;
+      }
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Fetching tx on ${chain}...` },
+        async () => {
+          const { TxInspector } = require('../features/tx-inspector');
+          const rpc = getRpcProvider();
+          const inspector = new TxInspector(rpc);
+          const details = await inspector.inspect(txHash, chain);
+          const report = inspector.generateReport(details);
+          const doc = await vscode.workspace.openTextDocument({
+            content: report,
+            language: 'markdown',
+          });
+          await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+        }
+      );
+    }),
+
+    // Address inspector
+    vscode.commands.registerCommand('sigscan.exploreAddress', async () => {
+      const chains = [
+        'ethereum',
+        'sepolia',
+        'polygon',
+        'arbitrum',
+        'optimism',
+        'bsc',
+        'base',
+        'avalanche',
+      ];
+      const chain = await vscode.window.showQuickPick(chains, { placeHolder: 'Select chain' });
+      if (!chain) {
+        return;
+      }
+      const address = await vscode.window.showInputBox({
+        prompt: 'Enter address',
+        placeHolder: '0x...',
+        validateInput: (v) => (/^0x[0-9a-fA-F]{40}$/.test(v) ? null : 'Invalid address'),
+      });
+      if (!address) {
+        return;
+      }
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Inspecting address on ${chain}...`,
+        },
+        async () => {
+          const { AddressInspector } = require('../features/address-inspector');
+          const rpc = getRpcProvider();
+          const inspector = new AddressInspector(rpc);
+          const info = await inspector.inspect(address, chain);
+          const report = inspector.generateReport(info);
+          const doc = await vscode.workspace.openTextDocument({
+            content: report,
+            language: 'markdown',
+          });
+          await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+        }
+      );
+    }),
+
+    // View contract events
+    vscode.commands.registerCommand('sigscan.viewEvents', async () => {
+      const chains = [
+        'ethereum',
+        'sepolia',
+        'polygon',
+        'arbitrum',
+        'optimism',
+        'bsc',
+        'base',
+        'avalanche',
+      ];
+      const chain = await vscode.window.showQuickPick(chains, { placeHolder: 'Select chain' });
+      if (!chain) {
+        return;
+      }
+      const address = await vscode.window.showInputBox({
+        prompt: 'Enter contract address to fetch events from',
+        placeHolder: '0x...',
+        validateInput: (v) => (/^0x[0-9a-fA-F]{40}$/.test(v) ? null : 'Invalid address'),
+      });
+      if (!address) {
+        return;
+      }
+      const blockRange = await vscode.window.showInputBox({
+        prompt: 'How many recent blocks to scan? (max 1000)',
+        value: '100',
+      });
+      if (!blockRange) {
+        return;
+      }
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Fetching events on ${chain}...` },
+        async () => {
+          const { EventDecoder } = require('../features/event-decoder');
+          const rpc = getRpcProvider();
+          const decoder = new EventDecoder(rpc);
+          const currentBlock = await rpc.getBlockNumber(chain);
+          const fromBlock = Math.max(0, currentBlock - parseInt(blockRange, 10));
+          const events = await decoder.getEvents({
+            chain,
+            address,
+            fromBlock,
+            toBlock: currentBlock,
+            maxBlocks: 1000,
+          });
+          const report = decoder.generateReport(events, {
+            chain,
+            address,
+            fromBlock,
+            toBlock: currentBlock,
+          });
+          const doc = await vscode.workspace.openTextDocument({
+            content: report,
+            language: 'markdown',
+          });
+          await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+        }
+      );
+    }),
+
+    // Read contract state
+    vscode.commands.registerCommand('sigscan.readContractState', async () => {
+      const chains = [
+        'ethereum',
+        'sepolia',
+        'polygon',
+        'arbitrum',
+        'optimism',
+        'bsc',
+        'base',
+        'avalanche',
+      ];
+      const chain = await vscode.window.showQuickPick(chains, { placeHolder: 'Select chain' });
+      if (!chain) {
+        return;
+      }
+      const address = await vscode.window.showInputBox({
+        prompt: 'Enter contract address',
+        placeHolder: '0x...',
+        validateInput: (v) => (/^0x[0-9a-fA-F]{40}$/.test(v) ? null : 'Invalid address'),
+      });
+      if (!address) {
+        return;
+      }
+      const funcSig = await vscode.window.showInputBox({
+        prompt: 'Enter function signature to call (e.g., "totalSupply()" or "balanceOf(address)")',
+        placeHolder: 'totalSupply()',
+      });
+      if (!funcSig) {
+        return;
+      }
+      let args: string[] = [];
+      if (funcSig.includes('(') && !funcSig.endsWith('()')) {
+        const argStr = await vscode.window.showInputBox({
+          prompt: 'Enter arguments (comma-separated)',
+          placeHolder: '0x1234..., 100',
+        });
+        if (argStr) {
+          args = argStr.split(',').map((a) => a.trim());
+        }
+      }
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Reading contract state...' },
+        async () => {
+          const { ChainExplorer } = require('../features/chain-explorer');
+          const rpc = getRpcProvider();
+          const explorer = new ChainExplorer(rpc);
+          const calldata = explorer.encodeCall(funcSig, args);
+          const result = await explorer.simulateCall(chain, { to: address, data: calldata });
+          const lines = [
+            `# Contract State Read\n`,
+            `**Chain:** ${chain}`,
+            `**Contract:** \`${address}\``,
+            `**Function:** \`${funcSig}\``,
+            args.length > 0 ? `**Args:** ${args.map((a) => `\`${a}\``).join(', ')}\n` : '',
+            `## Result\n`,
+            result.success ? `**Status:** Success` : `**Status:** Reverted`,
+            `**Raw data:** \`${result.data}\``,
+          ];
+          if (result.decoded && result.decoded.length > 0) {
+            lines.push('\n| Type | Value |', '|------|-------|');
+            for (const d of result.decoded) {
+              lines.push(`| ${d.type} | \`${d.value}\` |`);
+            }
+          }
+          const doc = await vscode.workspace.openTextDocument({
+            content: lines.join('\n'),
+            language: 'markdown',
+          });
+          await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+        }
+      );
+    }),
+
+    // ERC20 token balance
+    vscode.commands.registerCommand('sigscan.getTokenBalance', async () => {
+      const chains = [
+        'ethereum',
+        'sepolia',
+        'polygon',
+        'arbitrum',
+        'optimism',
+        'bsc',
+        'base',
+        'avalanche',
+      ];
+      const chain = await vscode.window.showQuickPick(chains, { placeHolder: 'Select chain' });
+      if (!chain) {
+        return;
+      }
+      const tokenAddress = await vscode.window.showInputBox({
+        prompt: 'Enter ERC20 token contract address',
+        placeHolder: '0x...',
+      });
+      if (!tokenAddress) {
+        return;
+      }
+      const holderAddress = await vscode.window.showInputBox({
+        prompt: 'Enter holder address',
+        placeHolder: '0x...',
+      });
+      if (!holderAddress) {
+        return;
+      }
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Fetching token balance...' },
+        async () => {
+          const { ChainExplorer } = require('../features/chain-explorer');
+          const rpc = getRpcProvider();
+          const explorer = new ChainExplorer(rpc);
+          const balance = await explorer.getTokenBalance(chain, tokenAddress, holderAddress);
+          vscode.window.showInformationMessage(
+            `${balance.symbol} Balance: ${balance.formatted} (${balance.raw} raw, ${balance.decimals} decimals)`
+          );
+        }
+      );
+    }),
+
+    // ─── Foundry Tools ────────────────────────────────────────────────────
+
+    // Cast command
+    vscode.commands.registerCommand('sigscan.castCommand', async () => {
+      const { CastIntegration } = require('../features/cast-integration');
+      const cast = new CastIntegration();
+      if (!(await cast.isAvailable())) {
+        vscode.window.showErrorMessage(
+          'Cast not found. Install Foundry: curl -L https://foundry.paradigm.xyz | bash'
+        );
+        return;
+      }
+      const commands = [
+        'call — Simulate contract call',
+        'balance — Get ETH balance',
+        'code — Get contract bytecode',
+        'storage — Read storage slot',
+        'sig — Get function selector',
+        'keccak — Hash data',
+        'abi-encode — Encode function args',
+        'abi-decode — Decode ABI data',
+        'calldata — Encode calldata',
+        'to-wei — Convert to wei',
+        'from-wei — Convert from wei',
+        'to-hex — Convert to hex',
+        'to-dec — Convert to decimal',
+        'to-checksum — Checksum address',
+        'gas-price — Get gas price',
+        'block — Get block info',
+        'interface — Generate interface from ABI',
+        'raw — Run any cast command',
+      ];
+      const picked = await vscode.window.showQuickPick(commands, {
+        placeHolder: 'Select cast command',
+      });
+      if (!picked) {
+        return;
+      }
+      const cmd = picked.split(' — ')[0];
+      const args = await vscode.window.showInputBox({
+        prompt: `Enter arguments for "cast ${cmd}"`,
+        placeHolder: cmd === 'raw' ? 'e.g.: block latest --rpc-url https://eth.llamarpc.com' : '',
+      });
+      if (args === undefined) {
+        return;
+      }
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Running cast ${cmd}...` },
+        async () => {
+          const result =
+            cmd === 'raw'
+              ? await cast.raw(args.split(/\s+/))
+              : await cast.raw([cmd, ...args.split(/\s+/).filter(Boolean)]);
+          if (result.success) {
+            const doc = await vscode.workspace.openTextDocument({
+              content: `# cast ${cmd}\n\n\`\`\`\n${result.output}\n\`\`\``,
+              language: 'markdown',
+            });
+            await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+          } else {
+            vscode.window.showErrorMessage(`cast ${cmd} failed: ${result.error}`);
+          }
+        }
+      );
+    }),
+
+    // Start Anvil
+    vscode.commands.registerCommand('sigscan.startAnvil', async () => {
+      const { AnvilManager } = require('../features/anvil-manager');
+      if (!_anvilManager) {
+        _anvilManager = new AnvilManager();
+      }
+      const anvil = _anvilManager!;
+      if (!(await anvil.isAvailable())) {
+        vscode.window.showErrorMessage(
+          'Anvil not found. Install Foundry: curl -L https://foundry.paradigm.xyz | bash'
+        );
+        return;
+      }
+      if (anvil.isRunning()) {
+        vscode.window.showWarningMessage(`Anvil already running at ${anvil.getRpcUrl()}`);
+        return;
+      }
+      const forkChoice = await vscode.window.showQuickPick(
+        [
+          'No fork (blank state)',
+          'Fork Ethereum Mainnet',
+          'Fork Sepolia',
+          'Fork Polygon',
+          'Fork Arbitrum',
+          'Fork Base',
+          'Custom RPC URL',
+        ],
+        { placeHolder: 'Start Anvil with fork?' }
+      );
+      if (!forkChoice) {
+        return;
+      }
+      const forkUrls: Record<string, string> = {
+        'Fork Ethereum Mainnet': 'https://eth.llamarpc.com',
+        'Fork Sepolia': 'https://rpc.sepolia.org',
+        'Fork Polygon': 'https://polygon-rpc.com',
+        'Fork Arbitrum': 'https://arb1.arbitrum.io/rpc',
+        'Fork Base': 'https://mainnet.base.org',
+      };
+      let forkUrl: string | undefined;
+      if (forkChoice === 'Custom RPC URL') {
+        forkUrl = await vscode.window.showInputBox({ prompt: 'Enter RPC URL to fork from' });
+        if (!forkUrl) {
+          return;
+        }
+      } else if (forkChoice !== 'No fork (blank state)') {
+        forkUrl = forkUrls[forkChoice];
+      }
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Starting Anvil...' },
+        async () => {
+          const state = await anvil.start({ forkUrl });
+          vscode.window.showInformationMessage(
+            `Anvil running at ${state.rpcUrl} (${state.accounts.length} accounts funded)`
+          );
+        }
+      );
+    }),
+
+    // Stop Anvil
+    vscode.commands.registerCommand('sigscan.stopAnvil', async () => {
+      if (!_anvilManager || !_anvilManager.isRunning()) {
+        vscode.window.showWarningMessage('Anvil is not running');
+        return;
+      }
+      await _anvilManager.stop();
+      vscode.window.showInformationMessage('Anvil stopped');
+    }),
+
+    // Forge script runner
+    vscode.commands.registerCommand('sigscan.runForgeScript', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        vscode.window.showErrorMessage('No workspace folder open');
+        return;
+      }
+      const { ForgeScriptRunner } = require('../features/forge-script-runner');
+      const runner = new ForgeScriptRunner();
+      if (!(await runner.isAvailable())) {
+        vscode.window.showErrorMessage('Forge not found. Install Foundry.');
+        return;
+      }
+      const scripts = await runner.discoverScripts(workspaceFolder.uri.fsPath);
+      if (scripts.length === 0) {
+        vscode.window.showWarningMessage('No .s.sol scripts found in script/ directory');
+        return;
+      }
+      const scriptPath = await vscode.window.showQuickPick(scripts, {
+        placeHolder: 'Select script to run',
+      });
+      if (!scriptPath) {
+        return;
+      }
+      const mode = await vscode.window.showQuickPick(
+        ['Dry run (simulate)', 'Broadcast (send transactions)'],
+        { placeHolder: 'Run mode' }
+      );
+      if (!mode) {
+        return;
+      }
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Running ${path.basename(scriptPath)}...`,
+        },
+        async () => {
+          const scriptConfig: any = { scriptPath, broadcast: mode.startsWith('Broadcast') };
+          if (scriptConfig.broadcast) {
+            const rpcUrl = await vscode.window.showInputBox({
+              prompt: 'RPC URL',
+              value: 'http://localhost:8545',
+            });
+            if (!rpcUrl) {
+              return;
+            }
+            scriptConfig.rpcUrl = rpcUrl;
+          }
+          const result = await runner.run(scriptConfig);
+          const report = runner.generateReport(result, scriptConfig);
+          const doc = await vscode.workspace.openTextDocument({
+            content: report,
+            language: 'markdown',
+          });
+          await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+        }
+      );
+    }),
+
+    // Flatten contract
+    vscode.commands.registerCommand('sigscan.flattenContract', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.document.languageId !== 'solidity') {
+        vscode.window.showErrorMessage('Open a Solidity file to flatten');
+        return;
+      }
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Flattening contract...' },
+        async () => {
+          const { ContractFlattener } = require('../features/contract-flattener');
+          const flattener = new ContractFlattener();
+          const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+          const result = await flattener.flatten(editor.document.uri.fsPath, workspaceRoot);
+          if (result.success) {
+            const doc = await vscode.workspace.openTextDocument({
+              content: result.output,
+              language: 'solidity',
+            });
+            await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+            vscode.window.showInformationMessage(
+              `Flattened ${result.sourceFiles.length} files (${result.totalLines} lines)`
+            );
+          } else {
+            vscode.window.showErrorMessage(`Flatten failed: ${result.error}`);
+          }
+        }
+      );
+    }),
+
+    // ─── Snippets ─────────────────────────────────────────────────────────
+
+    vscode.commands.registerCommand('sigscan.insertSnippet', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showErrorMessage('No active editor');
+        return;
+      }
+      const { SnippetProvider } = require('../features/snippet-provider');
+      const snippetProvider = new SnippetProvider();
+      const categories = snippetProvider.getCategories();
+      const category = await vscode.window.showQuickPick(categories, {
+        placeHolder: 'Select snippet category',
+      });
+      if (!category) {
+        return;
+      }
+      const snippets = snippetProvider.getByCategory(category);
+      const items = snippets.map((s: any) => ({
+        label: s.prefix,
+        description: s.label,
+        detail: s.description,
+        _body: s.body,
+      }));
+      const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select snippet' });
+      if (!picked) {
+        return;
+      }
+      const snippet = new vscode.SnippetString((picked as any)._body);
+      editor.insertSnippet(snippet);
+    }),
+
+    // ─── Advanced: Tenderly, Fork Sim, Hardhat ────────────────────────────
+
+    // Tenderly trace
+    vscode.commands.registerCommand('sigscan.traceTenderly', async () => {
+      const chains = [
+        'ethereum',
+        'sepolia',
+        'polygon',
+        'arbitrum',
+        'optimism',
+        'bsc',
+        'base',
+        'avalanche',
+      ];
+      const chain = await vscode.window.showQuickPick(chains, { placeHolder: 'Select chain' });
+      if (!chain) {
+        return;
+      }
+      const txHash = await vscode.window.showInputBox({
+        prompt: 'Enter transaction hash to trace',
+        placeHolder: '0x...',
+        validateInput: (v) => (/^0x[0-9a-fA-F]{64}$/.test(v) ? null : 'Invalid tx hash'),
+      });
+      if (!txHash) {
+        return;
+      }
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Tracing transaction via Tenderly...',
+        },
+        async () => {
+          const config = vscode.workspace.getConfiguration('sigscan');
+          const { TenderlyIntegration } = require('../features/tenderly-integration');
+          const tenderly = new TenderlyIntegration({
+            accessKey: config.get('tenderly.accessKey', ''),
+            accountSlug: config.get('tenderly.accountSlug', ''),
+            projectSlug: config.get('tenderly.projectSlug', ''),
+          });
+          const trace = await tenderly.traceTransaction(txHash, chain);
+          if (!trace) {
+            vscode.window.showWarningMessage(
+              'Could not fetch trace. Check Tenderly configuration.'
+            );
+            return;
+          }
+          const report = tenderly.generateReport(trace);
+          const doc = await vscode.workspace.openTextDocument({
+            content: report,
+            language: 'markdown',
+          });
+          await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+        }
+      );
+    }),
+
+    // Fork simulator
+    vscode.commands.registerCommand('sigscan.simulateFork', async () => {
+      const { ForkSimulator } = require('../features/fork-simulator');
+      if (!_forkSimulator) {
+        _forkSimulator = new ForkSimulator();
+      }
+      const forkSim = _forkSimulator!;
+      if (!(await forkSim.isAvailable())) {
+        vscode.window.showErrorMessage('Anvil not found. Install Foundry for fork simulation.');
+        return;
+      }
+      if (forkSim.isRunning()) {
+        vscode.window.showInformationMessage(
+          'Fork already running. Use readContractState/castCommand to interact.'
+        );
+        return;
+      }
+      const chains = [
+        'ethereum',
+        'sepolia',
+        'polygon',
+        'arbitrum',
+        'optimism',
+        'bsc',
+        'base',
+        'avalanche',
+      ];
+      const chain = await vscode.window.showQuickPick(chains, {
+        placeHolder: 'Select chain to fork',
+      });
+      if (!chain) {
+        return;
+      }
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Starting ${chain} fork...` },
+        async () => {
+          const result = await forkSim.startFork({ chain, port: 8546 });
+          vscode.window.showInformationMessage(
+            `Fork running at ${result.rpcUrl} (block ${result.forkBlock}, ${result.accounts.length} accounts)`
+          );
+        }
+      );
+    }),
+
+    // Stop fork
+    vscode.commands.registerCommand('sigscan.stopFork', async () => {
+      if (!_forkSimulator || !_forkSimulator.isRunning()) {
+        vscode.window.showWarningMessage('No fork running');
+        return;
+      }
+      await _forkSimulator.stopFork();
+      vscode.window.showInformationMessage('Fork stopped');
+    }),
+
+    // Hardhat task
+    vscode.commands.registerCommand('sigscan.runHardhatTask', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        vscode.window.showErrorMessage('No workspace folder open');
+        return;
+      }
+      const { HardhatIntegration } = require('../features/hardhat-integration');
+      const hardhat = new HardhatIntegration();
+      if (!(await hardhat.isHardhatProject(workspaceFolder.uri.fsPath))) {
+        vscode.window.showWarningMessage('Not a Hardhat project (no hardhat.config found)');
+        return;
+      }
+      const tasks = await hardhat.listTasks(workspaceFolder.uri.fsPath);
+      const task = await vscode.window.showQuickPick(
+        tasks.length > 0 ? tasks : ['compile', 'test', 'clean', 'node'],
+        {
+          placeHolder: 'Select Hardhat task',
+        }
+      );
+      if (!task) {
+        return;
+      }
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Running hardhat ${task}...` },
+        async () => {
+          const result = await hardhat.runTask(workspaceFolder.uri.fsPath, task);
+          const report = hardhat.generateReport(result, task);
+          const doc = await vscode.workspace.openTextDocument({
+            content: report,
+            language: 'markdown',
+          });
+          await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+        }
+      );
+    }),
+
+    // Hardhat compile shortcut
+    vscode.commands.registerCommand('sigscan.hardhatCompile', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        return;
+      }
+      const { HardhatIntegration } = require('../features/hardhat-integration');
+      const hardhat = new HardhatIntegration();
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Hardhat compiling...' },
+        async () => {
+          const result = await hardhat.compile(workspaceFolder.uri.fsPath);
+          if (result.success) {
+            vscode.window.showInformationMessage('Hardhat compilation successful');
+          } else {
+            vscode.window.showErrorMessage(
+              `Hardhat compilation failed: ${result.error || result.output}`
+            );
+          }
+        }
+      );
+    }),
+
+    // Hardhat test shortcut
+    vscode.commands.registerCommand('sigscan.hardhatTest', async () => {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        return;
+      }
+      const { HardhatIntegration } = require('../features/hardhat-integration');
+      const hardhat = new HardhatIntegration();
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'Hardhat running tests...' },
+        async () => {
+          const result = await hardhat.test(workspaceFolder.uri.fsPath);
+          const report = hardhat.generateReport(result, 'test');
+          const doc = await vscode.workspace.openTextDocument({
+            content: report,
+            language: 'markdown',
+          });
+          await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
+        }
+      );
+    }),
   ];
 
   // Register selector hover provider
   const selectorHover = vscode.languages.registerHoverProvider(
     { scheme: 'file', pattern: '**/*' },
     selectorHoverProvider
+  );
+
+  // Register snippet completion provider (lazy-loaded singleton)
+  let _snippetProviderInstance: any = null;
+  function getSnippetProvider() {
+    if (!_snippetProviderInstance) {
+      const { SnippetProvider: SP } = require('../features/snippet-provider');
+      _snippetProviderInstance = new SP();
+    }
+    return _snippetProviderInstance;
+  }
+  const snippetCompletion = vscode.languages.registerCompletionItemProvider(
+    { scheme: 'file', language: 'solidity' },
+    {
+      provideCompletionItems(document, position) {
+        const linePrefix = document.lineAt(position).text.substring(0, position.character);
+        // Only trigger on empty lines or after whitespace
+        if (linePrefix.trim().length > 20) {
+          return undefined;
+        }
+        const sp = getSnippetProvider();
+        const query = linePrefix.trim().toLowerCase();
+        const matches = query.length > 0 ? sp.search(query) : [];
+        return matches.map((s: any) => {
+          const item = new vscode.CompletionItem(s.prefix, vscode.CompletionItemKind.Snippet);
+          item.insertText = new vscode.SnippetString(s.body);
+          item.documentation = new vscode.MarkdownString(s.description);
+          item.detail = `[0xTools] ${s.label}`;
+          item.sortText = `0_${s.prefix}`;
+          return item;
+        });
+      },
+    },
+    ...'abcdefghijklmnopqrstuvwxyz'.split('')
   );
 
   // Register notebook serializer (lazy-loaded)
@@ -794,7 +1684,7 @@ export function activate(context: vscode.ExtensionContext) {
       const now = Date.now();
       if (now - lastDisabledLogTime > 5000) {
         logger.debug(
-          'Realtime analysis disabled in settings - enable with "SigScan: Toggle Real-time Gas Analysis"'
+          'Realtime analysis disabled in settings - enable with "0xTools: Toggle Real-time Gas Analysis"'
         );
         lastDisabledLogTime = now;
       }
@@ -840,12 +1730,13 @@ export function activate(context: vscode.ExtensionContext) {
           }
 
           // Reload remappings if project root changed
-          if (remappingsResolver.getRemappings().length === 0 || projectRoot !== workspaceRoot) {
-            remappingsResolver.load(projectRoot);
+          const resolver = getRemappingsResolver();
+          if (resolver.getRemappings().length === 0 || projectRoot !== workspaceRoot) {
+            resolver.load(projectRoot);
           }
 
           // 0. Try remappings first (handles @openzeppelin/, forge-std/, etc.)
-          const remapped = remappingsResolver.resolve(importPath);
+          const remapped = resolver.resolve(importPath);
           if (remapped) {
             logger.debug(`Resolved import via remapping: ${importPath} -> ${remapped}`);
             return { contents: fs.readFileSync(remapped, 'utf-8') };
@@ -926,7 +1817,7 @@ export function activate(context: vscode.ExtensionContext) {
               `Contract bytecode is ${sizeKB.toFixed(1)}KB — exceeds 24KB EIP-170 deployment limit`,
               vscode.DiagnosticSeverity.Error
             );
-            sizeDiag.source = 'SigScan';
+            sizeDiag.source = '0xTools';
             sizeDiag.code = 'eip170-size';
             const existingDiags = diagnosticCollection.get(editor.document.uri);
             if (existingDiags) {
@@ -1048,7 +1939,7 @@ export function activate(context: vscode.ExtensionContext) {
             ? vscode.DiagnosticSeverity.Warning
             : vscode.DiagnosticSeverity.Information
         );
-        diag.source = 'SigScan';
+        diag.source = '0xTools';
         diag.code = 'reentrancy';
         securityDiags.push(diag);
       }
@@ -1064,7 +1955,7 @@ export function activate(context: vscode.ExtensionContext) {
           `${w.functionName}(): ${w.description}`,
           vscode.DiagnosticSeverity.Warning
         );
-        diag.source = 'SigScan';
+        diag.source = '0xTools';
         diag.code = 'unchecked-call';
         securityDiags.push(diag);
       }
@@ -1080,7 +1971,7 @@ export function activate(context: vscode.ExtensionContext) {
           `${w.functionName}(): ${w.description}`,
           vscode.DiagnosticSeverity.Hint
         );
-        diag.source = 'SigScan';
+        diag.source = '0xTools';
         diag.code = 'missing-event';
         securityDiags.push(diag);
       }
@@ -1098,7 +1989,7 @@ export function activate(context: vscode.ExtensionContext) {
             ? vscode.DiagnosticSeverity.Warning
             : vscode.DiagnosticSeverity.Information
         );
-        diag.source = 'SigScan';
+        diag.source = '0xTools';
         diag.code = 'access-control';
         securityDiags.push(diag);
       }
@@ -1114,7 +2005,7 @@ export function activate(context: vscode.ExtensionContext) {
           `${s.description}`,
           vscode.DiagnosticSeverity.Hint
         );
-        diag.source = 'SigScan';
+        diag.source = '0xTools';
         diag.code = 'custom-error';
         securityDiags.push(diag);
       }
@@ -1130,7 +2021,7 @@ export function activate(context: vscode.ExtensionContext) {
           `${w.functionName}(): ${w.description}`,
           vscode.DiagnosticSeverity.Hint
         );
-        diag.source = 'SigScan';
+        diag.source = '0xTools';
         diag.code = 'natspec';
         securityDiags.push(diag);
       }
@@ -1152,7 +2043,7 @@ export function activate(context: vscode.ExtensionContext) {
           `${w.functionName}(): ${w.description}`,
           diagSeverity
         );
-        diag.source = 'SigScan';
+        diag.source = '0xTools';
         diag.code = w.patternType;
         securityDiags.push(diag);
       }
@@ -1174,7 +2065,7 @@ export function activate(context: vscode.ExtensionContext) {
           `${w.functionName}(): ${w.description}`,
           diagSeverity
         );
-        diag.source = 'SigScan';
+        diag.source = '0xTools';
         diag.code = w.riskType;
         securityDiags.push(diag);
       }
@@ -1243,10 +2134,13 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // Trigger initial analysis for currently open editor (treat as file open)
+  // Trigger initial analysis for currently open editor (deferred so activate() returns fast)
   if (vscode.window.activeTextEditor) {
-    updateDecorations(vscode.window.activeTextEditor, true);
-    runSecurityAnalysis(vscode.window.activeTextEditor);
+    const initialEditor = vscode.window.activeTextEditor;
+    setTimeout(() => {
+      updateDecorations(initialEditor, true);
+      runSecurityAnalysis(initialEditor);
+    }, 500);
   }
 
   // Extended analysis commands (on-demand only, runs when idle - never parallel with solc)
@@ -1480,15 +2374,18 @@ export function activate(context: vscode.ExtensionContext) {
     regressionCommand,
     profilerCommand,
     codeLensDisposable,
+    snippetCompletion,
     ...commands,
     ...newCommands
   );
 
-  // Auto-scan on activation if enabled
-  const config = vscode.workspace.getConfiguration('sigscan');
-  if (config.get('autoScan', true)) {
-    sigScanManager.scanProject();
-  }
+  // Auto-scan on activation if enabled (deferred so activate() returns instantly)
+  setTimeout(() => {
+    const config = vscode.workspace.getConfiguration('sigscan');
+    if (config.get('autoScan', true)) {
+      sigScanManager.scanProject();
+    }
+  }, 100);
 
   // Set context for when clauses
   vscode.commands.executeCommand('setContext', 'sigscan:hasContracts', true);
@@ -1503,6 +2400,14 @@ export function deactivate() {
   }
   if (gasDecorationManager) {
     gasDecorationManager.dispose();
+  }
+  if (_anvilManager && _anvilManager.isRunning()) {
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    _anvilManager.stop().catch(() => {});
+  }
+  if (_forkSimulator && _forkSimulator.isRunning()) {
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    _forkSimulator.stopFork().catch(() => {});
   }
   compilationService.dispose();
 }

@@ -14,11 +14,14 @@ import * as https from 'https';
 /** Base URL for the 4byte.directory API. */
 const FOUR_BYTE_API_BASE = 'https://www.4byte.directory/api/v1/signatures/';
 
-/** HTTP request timeout in milliseconds. */
-const REQUEST_TIMEOUT_MS = 10_000;
+/** HTTP request timeout in milliseconds (5s — simple API lookups). */
+const REQUEST_TIMEOUT_MS = 5_000;
 
 /** Maximum number of concurrent requests for batch lookups. */
 const MAX_CONCURRENT_REQUESTS = 5;
+
+/** Keep-alive HTTPS agent for 4byte API requests. */
+const fourByteAgent = new https.Agent({ keepAlive: true, maxSockets: 4 });
 
 /** Simple in-memory cache for lookup results. */
 interface CacheEntry {
@@ -34,9 +37,11 @@ const CACHE_MAX_SIZE = 1000;
 
 export class FourByteLookup {
   private readonly cache: Map<string, CacheEntry>;
+  private readonly inflight: Map<string, Promise<string[]>>;
 
   constructor() {
     this.cache = new Map();
+    this.inflight = new Map();
   }
 
   /**
@@ -62,6 +67,21 @@ export class FourByteLookup {
       return cached.signatures;
     }
 
+    // Deduplicate in-flight requests for the same selector
+    const existing = this.inflight.get(normalizedSelector);
+    if (existing) {
+      return existing;
+    }
+
+    const promise = this._doLookup(normalizedSelector).finally(() => {
+      this.inflight.delete(normalizedSelector);
+    });
+    this.inflight.set(normalizedSelector, promise);
+    return promise;
+  }
+
+  /** Internal: perform the actual HTTP lookup for a single selector. */
+  private async _doLookup(normalizedSelector: string): Promise<string[]> {
     try {
       const url = `${FOUR_BYTE_API_BASE}?hex_signature=${normalizedSelector}`;
       const response = await this.httpGet(url);
@@ -212,7 +232,9 @@ export class FourByteLookup {
         method: 'GET',
         headers: {
           Accept: 'application/json',
+          Connection: 'keep-alive',
         },
+        agent: fourByteAgent,
         timeout: REQUEST_TIMEOUT_MS,
       };
 

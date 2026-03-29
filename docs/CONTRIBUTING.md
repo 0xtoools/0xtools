@@ -1,6 +1,6 @@
-# Contributing to SigScan
+# Contributing to 0xTools
 
-Thank you for your interest in contributing to SigScan! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to 0xTools! This document provides guidelines and instructions for contributing to the project.
 
 ## Table of Contents
 
@@ -285,7 +285,7 @@ When reporting bugs, please include:
 
 ### Required Information
 
-- **SigScan version**: Extension version number
+- **0xTools version**: Extension version number
 - **VS Code version**: Help → About
 - **Operating System**: Windows/macOS/Linux version
 - **Project type**: Foundry/Hardhat/other
@@ -297,7 +297,7 @@ When reporting bugs, please include:
 ### Example Bug Report
 
 ```markdown
-**SigScan Version**: 0.1.0
+**0xTools Version**: 0.1.0
 **VS Code Version**: 1.80.0
 **OS**: Ubuntu 22.04
 
@@ -305,7 +305,7 @@ When reporting bugs, please include:
 
 **Steps to Reproduce**:
 1. Open Foundry project with contracts using `import "./Custom.sol"`
-2. Run "SigScan: Scan Project for Signatures"
+2. Run "0xTools: Scan Project for Signatures"
 3. Check output - contracts with custom imports are missing
 
 **Expected**: All contracts should be parsed
@@ -337,7 +337,7 @@ For new features, please provide:
 
 2. **Add console.log statements** for debugging:
    ```typescript
-   console.log('SigScan Debug:', data);
+   console.log('0xTools Debug:', data);
    ```
 
 3. **Use VS Code Output panel** to view extension logs
@@ -375,4 +375,4 @@ The Solidity parser is in `src/core/parser.ts`. When adding new parsing capabili
 - **GitHub Issues**: For bug reports and feature requests
 - **Email**: Contact maintainers directly for sensitive issues
 
-Thank you for contributing to SigScan! 🚀
+Thank you for contributing to 0xTools! 🚀

@@ -11,7 +11,9 @@ const program = new Command();
 
 program
   .name('sigscan')
-  .description('Smart Contract Signature Scanner for Foundry/Hardhat projects')
+  .description(
+    'The ultimate Solidity development toolkit — gas analysis, security audits, on-chain inspection, Foundry/Hardhat integration, and more'
+  )
   .version('0.1.0');
 
 program

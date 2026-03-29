@@ -1,7 +1,7 @@
 {
-  "name": "sigscan",
-  "displayName": "SigScan - Smart Contract Signature Scanner",
-  "description": "Automatically scan and generate method signatures for Solidity contracts in Foundry/Hardhat projects",
+  "name": "0xtools",
+  "displayName": "0xTools - Solidity Developer Toolkit",
+  "description": "The ultimate Solidity development toolkit — gas analysis, security audits, on-chain inspection, Foundry/Hardhat integration, and more",
   "version": "0.0.5",
   "publisher": "0xshubhs",
   "icon": "icon.png",
@@ -30,6 +30,7 @@
     "workspaceContains:hardhat.config.js",
     "workspaceContains:hardhat.config.ts"
   ],
+  "sideEffects": false,
   "main": "./dist/extension/extension.js",
   "contributes": {
     "languages": [
@@ -49,223 +50,327 @@
       {
         "command": "sigscan.scanProject",
         "title": "Scan Project for Signatures",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.startWatching",
         "title": "Start Watching for Changes",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.stopWatching",
         "title": "Stop Watching for Changes",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.exportSignatures",
         "title": "Export Signatures",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.refreshSignatures",
         "title": "Refresh Signatures",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.generateABI",
         "title": "Generate ABI from Signatures",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.estimateGas",
         "title": "Estimate Gas Costs",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.checkContractSize",
         "title": "Check Contract Size",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.analyzeComplexity",
         "title": "Analyze Code Complexity",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.verifyEtherscan",
         "title": "Verify Against Etherscan",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.searchDatabase",
         "title": "Search Signature Database",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.generateAllReports",
         "title": "Generate All Analysis Reports",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.showGasAnnotations",
         "title": "Show Gas Annotations (Refresh)",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.toggleRealtimeAnalysis",
         "title": "Toggle Real-time Gas Analysis",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.showStorageLayout",
         "title": "Show Storage Layout Analysis",
-        "category": "SigScan",
+        "category": "0xTools",
         "icon": "$(database)"
       },
       {
         "command": "sigscan.showCallGraph",
         "title": "Show Function Call Graph",
-        "category": "SigScan",
+        "category": "0xTools",
         "icon": "$(type-hierarchy)"
       },
       {
         "command": "sigscan.showDeploymentCost",
         "title": "Show Deployment Cost Estimate",
-        "category": "SigScan",
+        "category": "0xTools",
         "icon": "$(rocket)"
       },
       {
         "command": "sigscan.compareWithBranch",
         "title": "Compare Gas with Branch",
-        "category": "SigScan",
+        "category": "0xTools",
         "icon": "$(git-compare)"
       },
       {
         "command": "sigscan.showProfilerReport",
         "title": "Show Runtime Profiler Report",
-        "category": "SigScan",
+        "category": "0xTools",
         "icon": "$(graph)"
       },
       {
         "command": "sigscan.detectCollisions",
         "title": "Detect Selector Collisions",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.checkInterfaces",
         "title": "Check Interface Compliance (ERC20/721/1155)",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.suggestOptimizations",
         "title": "Suggest Gas Optimizations",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.showCoverage",
         "title": "Show Test Coverage",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.analyzeUpgrade",
         "title": "Analyze Upgrade Compatibility",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.detectInvariants",
         "title": "Detect Contract Invariants",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.analyzeMEV",
         "title": "Analyze MEV Risks",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.createGasSnapshot",
         "title": "Create Gas Snapshot",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.showGasPricing",
         "title": "Show Live Gas Prices",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.lookup4byte",
         "title": "Lookup 4-Byte Selector",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.generateTests",
         "title": "Generate Foundry Test Stubs",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.openPlayground",
         "title": "Open Contract Playground",
-        "category": "SigScan",
+        "category": "0xTools",
         "icon": "$(play)"
       },
       {
         "command": "sigscan.openDashboard",
         "title": "Open Project Dashboard",
-        "category": "SigScan",
+        "category": "0xTools",
         "icon": "$(dashboard)"
       },
       {
         "command": "sigscan.detectReentrancy",
         "title": "Detect Reentrancy Vulnerabilities",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.detectUncheckedCalls",
         "title": "Detect Unchecked Low-Level Calls",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.checkEvents",
         "title": "Check Missing Event Emissions",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.checkAccessControl",
         "title": "Check Access Control",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.suggestCustomErrors",
         "title": "Suggest Custom Errors (Gas Savings)",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.checkNatspec",
         "title": "Check NatSpec Completeness",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.forgeRunTest",
         "title": "Run Forge Test",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.forgeRunAllTests",
         "title": "Run All Forge Tests",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.detectDangerousPatterns",
         "title": "Detect Dangerous Patterns (tx.origin, selfdestruct, delegatecall)",
-        "category": "SigScan"
+        "category": "0xTools"
       },
       {
         "command": "sigscan.detectDeFiRisks",
         "title": "Detect DeFi Risks (Oracle, Precision, Approval, Zero-Address, Vault)",
-        "category": "SigScan"
+        "category": "0xTools"
+      },
+      {
+        "command": "sigscan.runSlither",
+        "title": "Run Slither Analysis",
+        "category": "0xTools"
+      },
+      {
+        "command": "sigscan.runMythril",
+        "title": "Run Mythril Analysis",
+        "category": "0xTools"
+      },
+      {
+        "command": "sigscan.inspectTransaction",
+        "title": "Inspect Transaction by Hash",
+        "category": "0xTools",
+        "icon": "$(search)"
+      },
+      {
+        "command": "sigscan.exploreAddress",
+        "title": "Inspect Address (Balance, Code, Proxy)",
+        "category": "0xTools",
+        "icon": "$(account)"
+      },
+      {
+        "command": "sigscan.viewEvents",
+        "title": "View Contract Events",
+        "category": "0xTools",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "sigscan.readContractState",
+        "title": "Read Contract State",
+        "category": "0xTools",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "sigscan.getTokenBalance",
+        "title": "Get ERC20 Token Balance",
+        "category": "0xTools"
+      },
+      {
+        "command": "sigscan.castCommand",
+        "title": "Run Cast Command",
+        "category": "0xTools",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "sigscan.startAnvil",
+        "title": "Start Local Anvil Node",
+        "category": "0xTools",
+        "icon": "$(server-process)"
+      },
+      {
+        "command": "sigscan.stopAnvil",
+        "title": "Stop Anvil Node",
+        "category": "0xTools"
+      },
+      {
+        "command": "sigscan.runForgeScript",
+        "title": "Run Forge Script",
+        "category": "0xTools",
+        "icon": "$(run)"
+      },
+      {
+        "command": "sigscan.flattenContract",
+        "title": "Flatten Contract",
+        "category": "0xTools"
+      },
+      {
+        "command": "sigscan.insertSnippet",
+        "title": "Insert Solidity Snippet",
+        "category": "0xTools",
+        "icon": "$(symbol-snippet)"
+      },
+      {
+        "command": "sigscan.traceTenderly",
+        "title": "Trace Transaction (Tenderly)",
+        "category": "0xTools"
+      },
+      {
+        "command": "sigscan.simulateFork",
+        "title": "Simulate on Fork",
+        "category": "0xTools",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "sigscan.stopFork",
+        "title": "Stop Fork Simulation",
+        "category": "0xTools"
+      },
+      {
+        "command": "sigscan.runHardhatTask",
+        "title": "Run Hardhat Task",
+        "category": "0xTools"
+      },
+      {
+        "command": "sigscan.hardhatCompile",
+        "title": "Hardhat: Compile",
+        "category": "0xTools"
+      },
+      {
+        "command": "sigscan.hardhatTest",
+        "title": "Hardhat: Run Tests",
+        "category": "0xTools"
       }
     ],
     "configuration": {
-      "title": "SigScan",
+      "title": "0xTools",
       "properties": {
         "sigscan.autoScan": {
           "type": "boolean",
@@ -363,13 +468,39 @@
           "type": "boolean",
           "default": true,
           "description": "Use sigscan-runner (EVM execution) as the primary gas backend when available. Disable to use forge/solc instead."
+        },
+        "sigscan.defaultChain": {
+          "type": "string",
+          "default": "ethereum",
+          "enum": ["ethereum", "sepolia", "polygon", "arbitrum", "optimism", "bsc", "base", "avalanche"],
+          "description": "Default chain for on-chain operations (tx inspect, address lookup, events)"
+        },
+        "sigscan.rpc.customEndpoints": {
+          "type": "object",
+          "default": {},
+          "description": "Custom RPC endpoints per chain. Example: { \"ethereum\": \"https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY\" }"
+        },
+        "sigscan.tenderly.accessKey": {
+          "type": "string",
+          "default": "",
+          "description": "Tenderly API access key for transaction simulation"
+        },
+        "sigscan.tenderly.accountSlug": {
+          "type": "string",
+          "default": "",
+          "description": "Tenderly account slug"
+        },
+        "sigscan.tenderly.projectSlug": {
+          "type": "string",
+          "default": "",
+          "description": "Tenderly project slug"
         }
       }
     },
     "notebooks": [
       {
         "type": "sigscan-notebook",
-        "displayName": "SigScan Notebook",
+        "displayName": "0xTools Notebook",
         "selector": [
           { "filenamePattern": "*.sigscan" }
         ]
@@ -465,12 +596,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/0xshubhs/sigScan.git"
+    "url": "https://github.com/0xshubhs/0xtools.git"
   },
   "bugs": {
-    "url": "https://github.com/0xshubhs/sigScan/issues"
+    "url": "https://github.com/0xshubhs/0xtools/issues"
   },
-  "homepage": "https://github.com/0xshubhs/sigScan#readme",
+  "homepage": "https://github.com/0xshubhs/0xtools#readme",
   "author": {
     "name": "0xshubhs",
     "url": "https://github.com/0xshubhs"

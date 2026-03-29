@@ -17,7 +17,7 @@ class Logger {
    * Initialize the output channel. Must be called during extension activation.
    */
   init(context: vscode.ExtensionContext): void {
-    this.channel = vscode.window.createOutputChannel('SigScan');
+    this.channel = vscode.window.createOutputChannel('0xTools');
     context.subscriptions.push(this.channel);
 
     const config = vscode.workspace.getConfiguration('sigscan');
@@ -67,9 +67,9 @@ class Logger {
 
     // Mirror errors/warnings to the dev console for debugging
     if (level === 'error') {
-      console.error(`[SigScan] ${message}`, ...args);
+      console.error(`[0xTools] ${message}`, ...args);
     } else if (level === 'warn') {
-      console.warn(`[SigScan] ${message}`, ...args);
+      console.warn(`[0xTools] ${message}`, ...args);
     }
   }
 }

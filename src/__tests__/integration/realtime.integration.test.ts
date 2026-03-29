@@ -161,7 +161,7 @@ contract Test {
       const analysis = await analyzer.analyzeDocument(document);
 
       expect(analysis.diagnostics.length).toBeGreaterThan(0);
-      const gasDiagnostic = analysis.diagnostics.find((d) => d.source === 'SigScan Gas');
+      const gasDiagnostic = analysis.diagnostics.find((d) => d.source === '0xTools Gas');
       expect(gasDiagnostic).toBeTruthy();
     });
 
@@ -179,7 +179,7 @@ contract Test {
       const analysis = await analyzer.analyzeDocument(document);
 
       const complexityDiagnostic = analysis.diagnostics.find(
-        (d) => d.source === 'SigScan Complexity'
+        (d) => d.source === '0xTools Complexity'
       );
       expect(complexityDiagnostic).toBeTruthy();
     });

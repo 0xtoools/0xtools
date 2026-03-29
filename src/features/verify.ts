@@ -4,6 +4,12 @@ import * as https from 'https';
  * Etherscan Verification - Verify contract signatures against Etherscan
  */
 
+/** HTTP request timeout in milliseconds. */
+const VERIFY_TIMEOUT_MS = 10_000;
+
+/** Keep-alive HTTPS agent for Etherscan API requests. */
+const etherscanAgent = new https.Agent({ keepAlive: true, maxSockets: 4 });
+
 export interface EtherscanConfig {
   apiKey: string;
   network: 'mainnet' | 'sepolia' | 'polygon' | 'bsc';
@@ -54,28 +60,52 @@ export class EtherscanVerifier {
     const url = `${endpoint}?module=contract&action=getabi&address=${contractAddress}&apikey=${this.config.apiKey}`;
 
     return new Promise((resolve, reject) => {
-      https
-        .get(url, (res) => {
-          let data = '';
+      const parsedUrl = new URL(url);
 
-          res.on('data', (chunk) => {
-            data += chunk;
-          });
+      const options: https.RequestOptions = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || 443,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Connection: 'keep-alive',
+        },
+        agent: etherscanAgent,
+        timeout: VERIFY_TIMEOUT_MS,
+      };
 
-          res.on('end', () => {
-            try {
-              const response = JSON.parse(data);
-              if (response.status === '1') {
-                resolve(JSON.parse(response.result));
-              } else {
-                reject(new Error(response.result));
-              }
-            } catch (error) {
-              reject(error);
+      const req = https.request(options, (res) => {
+        let data = '';
+
+        res.on('data', (chunk: Buffer | string) => {
+          data += chunk;
+        });
+
+        res.on('end', () => {
+          try {
+            const response = JSON.parse(data);
+            if (response.status === '1') {
+              resolve(JSON.parse(response.result));
+            } else {
+              reject(new Error(response.result));
             }
-          });
-        })
-        .on('error', reject);
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+
+      req.on('error', (err: Error) => {
+        reject(new Error(`Etherscan API request failed: ${err.message}`));
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error(`Etherscan API request timed out after ${VERIFY_TIMEOUT_MS}ms`));
+      });
+
+      req.end();
     });
   }
 

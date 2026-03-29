@@ -1,4 +1,4 @@
-# SigScan Architecture
+# 0xTools Architecture
 
 ## Table of Contents
 - [Overview](#overview)
@@ -11,7 +11,7 @@
 
 ## Overview
 
-SigScan is a VS Code extension and CLI tool that automatically extracts function signatures, event signatures, and custom error signatures from Solidity smart contracts. The architecture is designed for performance, extensibility, and developer experience.
+0xTools is a VS Code extension and CLI tool that automatically extracts function signatures, event signatures, and custom error signatures from Solidity smart contracts. The architecture is designed for performance, extensibility, and developer experience.
 
 ## System Architecture
 
@@ -323,7 +323,7 @@ sequenceDiagram
 
 ```mermaid
 graph TD
-    A[SigScan Root] --> B[Contracts]
+    A[0xTools Root] --> B[Contracts]
     A --> C[Libraries]
     A --> D[Tests]
     A --> E[Interfaces]
@@ -533,7 +533,7 @@ flowchart TD
 ## Configuration
 
 ```typescript
-interface SigScanConfig {
+interface 0xToolsConfig {
   // Output settings
   outputFormat: 'json' | 'txt' | 'both';
   outputDirectory: string;

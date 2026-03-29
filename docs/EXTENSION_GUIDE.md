@@ -1,4 +1,4 @@
-# SigScan VS Code Extension - Complete Guide
+# 0xTools VS Code Extension - Complete Guide
 
 ## Table of Contents
 
@@ -13,7 +13,7 @@
 
 ## Overview
 
-SigScan is a VS Code extension that automatically scans Solidity smart contracts and generates function, event, and error signatures with their corresponding method hashes. It supports both Foundry and Hardhat projects with real-time file watching capabilities.
+0xTools is a VS Code extension that automatically scans Solidity smart contracts and generates function, event, and error signatures with their corresponding method hashes. It supports both Foundry and Hardhat projects with real-time file watching capabilities.
 
 ### Key Features
 
@@ -39,7 +39,7 @@ SigScan is a VS Code extension that automatically scans Solidity smart contracts
 
 1. Open VS Code
 2. Go to Extensions (`Ctrl+Shift+X`)
-3. Search for "SigScan"
+3. Search for "0xTools"
 4. Click Install
 
 ## Building from Source
@@ -193,7 +193,7 @@ approve(address,uint256)                 --> 0x095ea7b3
 2. **The extension activates automatically** when it detects `.sol` files
 3. **Run initial scan**:
    - Press `Ctrl+Shift+P`
-   - Type "SigScan: Scan Project for Signatures"
+   - Type "0xTools: Scan Project for Signatures"
    - Press Enter
 
 4. **Signature files are created** in `signatures/` folder:
@@ -204,15 +204,15 @@ approve(address,uint256)                 --> 0x095ea7b3
 
 Access these via Command Palette (`Ctrl+Shift+P`):
 
-- **SigScan: Scan Project for Signatures** - Initial scan and auto-watch
-- **SigScan: Start Watching for Changes** - Enable file monitoring
-- **SigScan: Stop Watching for Changes** - Disable file monitoring
-- **SigScan: Export Signatures** - Manual export to files
-- **SigScan: Refresh Signatures** - Re-scan all contracts
+- **0xTools: Scan Project for Signatures** - Initial scan and auto-watch
+- **0xTools: Start Watching for Changes** - Enable file monitoring
+- **0xTools: Stop Watching for Changes** - Disable file monitoring
+- **0xTools: Export Signatures** - Manual export to files
+- **0xTools: Refresh Signatures** - Re-scan all contracts
 
 ### Tree View
 
-The extension adds a "SigScan Explorer" panel to the VS Code sidebar:
+The extension adds a "0xTools Explorer" panel to the VS Code sidebar:
 - Browse contracts and their signatures
 - Click to copy signatures or selectors
 - Expand/collapse contract sections
@@ -296,14 +296,14 @@ Configure the extension in VS Code settings (`Ctrl+,`):
 **Solution**:
 - Check VS Code output panel for errors
 - Ensure workspace folder has write permissions
-- Try manual export: `Ctrl+Shift+P` → "SigScan: Export Signatures"
+- Try manual export: `Ctrl+Shift+P` → "0xTools: Export Signatures"
 
 #### File Watching Not Working
 
 **Problem**: Changes to `.sol` files don't trigger updates.
 
 **Solution**:
-- Manually start watching: `Ctrl+Shift+P` → "SigScan: Start Watching for Changes"
+- Manually start watching: `Ctrl+Shift+P` → "0xTools: Start Watching for Changes"
 - Check if `chokidar` is properly installed: `npm ls chokidar`
 - Ensure file system supports file watching
 
@@ -321,7 +321,7 @@ Configure the extension in VS Code settings (`Ctrl+,`):
 Enable debug logging:
 
 1. Open VS Code Developer Tools (`Help` → `Toggle Developer Tools`)
-2. Check Console tab for SigScan debug messages
+2. Check Console tab for 0xTools debug messages
 3. Look for parsing errors or file system issues
 
 ### Support

@@ -402,7 +402,7 @@ export class SigScanManager {
       );
 
       // Show results in output channel
-      const outputChannel = vscode.window.createOutputChannel('SigScan Gas Estimates');
+      const outputChannel = vscode.window.createOutputChannel('0xTools Gas Estimates');
       outputChannel.clear();
       outputChannel.appendLine('=== Gas Estimates ===\n');
 
@@ -449,7 +449,7 @@ export class SigScanManager {
       }
 
       // Show results
-      const outputChannel = vscode.window.createOutputChannel('SigScan Contract Sizes');
+      const outputChannel = vscode.window.createOutputChannel('0xTools Contract Sizes');
       outputChannel.clear();
       outputChannel.appendLine('=== Contract Size Analysis ===\n');
       outputChannel.appendLine(`EIP-170 Limit: 24,576 bytes\n`);
@@ -518,7 +518,7 @@ export class SigScanManager {
       }
 
       // Show results
-      const outputChannel = vscode.window.createOutputChannel('SigScan Complexity Analysis');
+      const outputChannel = vscode.window.createOutputChannel('0xTools Complexity Analysis');
       outputChannel.clear();
       outputChannel.appendLine('=== Cyclomatic Complexity Analysis ===\n');
       outputChannel.appendLine(

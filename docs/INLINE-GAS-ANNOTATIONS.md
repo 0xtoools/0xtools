@@ -2,13 +2,13 @@
 
 ## Overview
 
-SigScan now displays **inline gas cost estimates** directly in your Solidity files, similar to Remix IDE! Each function shows estimated gas costs right next to the function signature.
+0xTools now displays **inline gas cost estimates** directly in your Solidity files, similar to Remix IDE! Each function shows estimated gas costs right next to the function signature.
 
 ## Features
 
 ### 🎯 Automatic Inline Annotations
 
-When you open or edit a Solidity file, SigScan automatically:
+When you open or edit a Solidity file, 0xTools automatically:
 - Analyzes each function's gas consumption
 - Displays estimated gas costs inline (e.g., `// ⛽ 23,450 gas`)
 - Color-codes annotations based on complexity:
@@ -33,7 +33,7 @@ Hover over any gas annotation to see detailed breakdown:
 The feature is **enabled by default**. To toggle:
 
 1. **Command Palette** (Ctrl+Shift+P / Cmd+Shift+P)
-2. Search: `SigScan: Toggle Real-time Analysis`
+2. Search: `0xTools: Toggle Real-time Analysis`
 3. Or use VS Code settings: `sigscan.realtimeAnalysis`
 
 ### Example
@@ -75,7 +75,7 @@ contract Example {
 
 ### Gas Estimation Factors
 
-SigScan considers:
+0xTools considers:
 - **Storage Operations**: SLOAD (200 gas), SSTORE (5,000-20,000 gas)
 - **Memory Operations**: MLOAD (3 gas), MSTORE (3 gas)
 - **Arithmetic**: ADD (3 gas), MUL (5 gas), DIV (5 gas)
@@ -97,7 +97,7 @@ Add to your VS Code `settings.json`:
 
 ## Comparison with Remix
 
-| Feature | Remix | SigScan |
+| Feature | Remix | 0xTools |
 |---------|-------|---------|
 | Inline gas display | ✅ | ✅ |
 | Real-time updates | ✅ | ✅ |
@@ -142,7 +142,7 @@ For actual gas costs from test execution:
 # Run Foundry tests with gas reporting
 forge test --gas-report
 
-# SigScan will compare estimates vs actuals
+# 0xTools will compare estimates vs actuals
 ```
 
 ## Demo
@@ -174,7 +174,7 @@ Open `examples/src/GasDemo.sol` to see annotations in action:
 ### Performance Issues?
 
 - Large files (> 1000 lines) may take longer
-- Clear cache: F1 → "SigScan: Refresh Signatures"
+- Clear cache: F1 → "0xTools: Refresh Signatures"
 - Disable for specific files if needed
 
 ## Related Features

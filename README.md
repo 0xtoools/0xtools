@@ -1,9 +1,9 @@
-# SigScan - Smart Contract Signature Scanner
+# 0xTools - Solidity Developer Toolkit
 
-[![Version](https://img.shields.io/visual-studio-marketplace/v/0xshubhs.sigscan?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=0xshubhs.sigscan)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/0xshubhs.sigscan?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=0xshubhs.sigscan)
-[![Rating](https://img.shields.io/visual-studio-marketplace/r/0xshubhs.sigscan?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=0xshubhs.sigscan)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/0xshubhs/sigScan/pr-validation.yml?branch=main&style=flat-square)](https://github.com/0xshubhs/sigScan/actions)
+[![Version](https://img.shields.io/visual-studio-marketplace/v/0xshubhs.0xtools?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=0xshubhs.0xtools)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/0xshubhs.0xtools?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=0xshubhs.0xtools)
+[![Rating](https://img.shields.io/visual-studio-marketplace/r/0xshubhs.0xtools?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=0xshubhs.0xtools)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/0xshubhs/0xtools/pr-validation.yml?branch=main&style=flat-square)](https://github.com/0xshubhs/0xtools/actions)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 A professional VS Code extension and CLI tool for automatically scanning and generating method signatures from Solidity smart contracts in Foundry and Hardhat projects.
@@ -24,7 +24,7 @@ A professional VS Code extension and CLI tool for automatically scanning and gen
 
 ## Overview
 
-SigScan is a developer tool designed to streamline smart contract development by automatically extracting and organizing function signatures, events, and custom errors from Solidity contracts. It supports both Foundry and Hardhat project structures and provides organized output that can be used for testing, documentation, and contract interaction.
+0xTools is a developer tool designed to streamline smart contract development by automatically extracting and organizing function signatures, events, and custom errors from Solidity contracts. It supports both Foundry and Hardhat project structures and provides organized output that can be used for testing, documentation, and contract interaction.
 
 ## Features
 
@@ -98,13 +98,13 @@ The extension uses solc for accurate gas analysis:
 
 1. Open Visual Studio Code
 2. Press `Ctrl+P` (Windows/Linux) or `Cmd+P` (macOS)
-3. Type: `ext install 0xshubhs.sigscan`
+3. Type: `ext install 0xshubhs.0xtools`
 4. Press Enter
 
 ### From VSIX File
 
 ```bash
-code --install-extension sigscan-0.3.0.vsix
+code --install-extension 0xtools-0.3.0.vsix
 ```
 
 ### Command Line Installation
@@ -125,17 +125,17 @@ npx sigscan scan ./my-project
 
 1. Open a Foundry or Hardhat project in VS Code
 2. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (macOS)
-3. Type "SigScan: Scan Project"
+3. Type "0xTools: Scan Project"
 4. Signatures will be generated in `<project-root>/signatures/`
 
 #### Available Commands
 
 **Basic Operations:**
-- **SigScan: Scan Project** - Scan all contracts in the current project
-- **SigScan: Export Signatures** - Export signatures to specific format
-- **SigScan: Start/Stop Watching** - Enable/disable automatic rescanning
-- **SigScan: Refresh Signatures** - Manually refresh signature tree view
-- **SigScan: Toggle Real-time Gas Analysis** - Enable/disable inline gas annotations
+- **0xTools: Scan Project** - Scan all contracts in the current project
+- **0xTools: Export Signatures** - Export signatures to specific format
+- **0xTools: Start/Stop Watching** - Enable/disable automatic rescanning
+- **0xTools: Refresh Signatures** - Manually refresh signature tree view
+- **0xTools: Toggle Real-time Gas Analysis** - Enable/disable inline gas annotations
 
 **Advanced Analysis:**
 
@@ -145,18 +145,18 @@ These features run automatically in the background after main analysis completes
 - **Deployment Cost Estimation** - Calculates deployment gas and ETH costs
 
 Manual commands are also available for immediate execution:
-- **SigScan: Show Storage Layout Analysis** - View storage layout report
-- **SigScan: Show Function Call Graph** - View call graph visualization
-- **SigScan: Show Deployment Cost Estimate** - View deployment cost breakdown
-- **SigScan: Compare Gas with Branch** - Compare gas usage with another git branch (requires git)
-- **SigScan: Show Runtime Profiler Report** - Compare estimated vs actual gas from forge tests (requires Foundry)
+- **0xTools: Show Storage Layout Analysis** - View storage layout report
+- **0xTools: Show Function Call Graph** - View call graph visualization
+- **0xTools: Show Deployment Cost Estimate** - View deployment cost breakdown
+- **0xTools: Compare Gas with Branch** - Compare gas usage with another git branch (requires git)
+- **0xTools: Show Runtime Profiler Report** - Compare estimated vs actual gas from forge tests (requires Foundry)
 
 **Additional Analysis Tools:**
-- **SigScan: Generate ABI** - Create ABI files from extracted signatures
-- **SigScan: Estimate Gas** - Analyze and estimate gas costs for functions
-- **SigScan: Check Contract Size** - Verify contract sizes against 24KB limit
-- **SigScan: Analyze Complexity** - Calculate code complexity metrics
-- **SigScan: Generate All Reports** - Run complete analysis suite
+- **0xTools: Generate ABI** - Create ABI files from extracted signatures
+- **0xTools: Estimate Gas** - Analyze and estimate gas costs for functions
+- **0xTools: Check Contract Size** - Verify contract sizes against 24KB limit
+- **0xTools: Analyze Complexity** - Calculate code complexity metrics
+- **0xTools: Generate All Reports** - Run complete analysis suite
 
 **How It Works:**
 Extended analysis features (storage layout, call graph, deployment) automatically run in the background after each successful compilation when:
@@ -169,7 +169,7 @@ This ensures zero impact on your editing experience while providing comprehensiv
 
 #### Tree View
 
-Access the SigScan sidebar to:
+Access the 0xTools sidebar to:
 - Browse contracts by category (contracts, libraries, tests)
 - View function signatures and selectors
 - Copy selectors to clipboard
@@ -234,7 +234,7 @@ Options:
 
 ## Output Structure
 
-SigScan generates organized signature files in your project's `signatures/` directory:
+0xTools generates organized signature files in your project's `signatures/` directory:
 
 ```
 signatures/
@@ -540,7 +540,7 @@ Approval(address,address,uint256) -> 0x8c5be1e5...
 
 ### VS Code Settings
 
-Configure SigScan through VS Code settings (File > Preferences > Settings):
+Configure 0xTools through VS Code settings (File > Preferences > Settings):
 
 ```json
 {
@@ -578,8 +578,8 @@ Create a `.sigscanrc.json` in your project root:
 
 ```bash
 # Clone the repository
-git clone https://github.com/0xshubhs/sigScan.git
-cd sigScan
+git clone https://github.com/0xshubhs/0xtools.git
+cd 0xtools
 
 # Install dependencies
 npm install
@@ -610,7 +610,7 @@ npm run test:coverage
 ### Project Structure
 
 ```
-sigScan/
+0xtools/
 ├── src/
 │   ├── cli/              # Command-line interface
 │   ├── core/             # Core scanning logic
@@ -669,10 +669,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Links
 
-- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=0xshubhs.sigscan)
-- [GitHub Repository](https://github.com/0xshubhs/sigScan)
-- [Issue Tracker](https://github.com/0xshubhs/sigScan/issues)
-- [Changelog](https://github.com/0xshubhs/sigScan/releases)
+- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=0xshubhs.0xtools)
+- [GitHub Repository](https://github.com/0xshubhs/0xtools)
+- [Issue Tracker](https://github.com/0xshubhs/0xtools/issues)
+- [Changelog](https://github.com/0xshubhs/0xtools/releases)
 
 ---
 

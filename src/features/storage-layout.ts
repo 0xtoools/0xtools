@@ -36,6 +36,15 @@ export interface PackingOpportunity {
   suggestion: string;
 }
 
+// Pre-compiled regex patterns — hoisted to module scope to avoid re-compilation per call
+const RE_BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g;
+const RE_LINE_COMMENT = /\/\/.*/g;
+const RE_DOUBLE_QUOTED = /"[^"]*"/g;
+const RE_SINGLE_QUOTED = /'[^']*'/g;
+const RE_STATE_VAR =
+  /(?:public|private|internal)?\s+(address|uint\d*|int\d*|bool|bytes\d*|string|mapping\([^)]+\)|\w+)\s+(?:public|private|internal)?\s*(\w+)\s*(?:=|;)/g;
+const RE_STORAGE_GAP = /uint256\[\d+\]\s+private\s+__gap/i;
+
 export class StorageLayoutAnalyzer {
   private readonly SLOT_SIZE = 32; // 32 bytes per slot
   private readonly COLD_SLOAD = 2100;
@@ -94,18 +103,16 @@ export class StorageLayoutAnalyzer {
 
     // Remove comments and strings
     const cleanCode = code
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/.*/g, '')
-      .replace(/"[^"]*"/g, '""')
-      .replace(/'[^']*'/g, "''");
+      .replace(RE_BLOCK_COMMENT, '')
+      .replace(RE_LINE_COMMENT, '')
+      .replace(RE_DOUBLE_QUOTED, '""')
+      .replace(RE_SINGLE_QUOTED, "''");
 
     // Match state variable declarations
-    // Pattern: visibility? type variableName;
-    const varPattern =
-      /(?:public|private|internal)?\s+(address|uint\d*|int\d*|bool|bytes\d*|string|mapping\([^)]+\)|\w+)\s+(?:public|private|internal)?\s*(\w+)\s*(?:=|;)/g;
+    RE_STATE_VAR.lastIndex = 0;
 
     let match;
-    while ((match = varPattern.exec(cleanCode)) !== null) {
+    while ((match = RE_STATE_VAR.exec(cleanCode)) !== null) {
       const [, type, name] = match;
 
       // Skip constants and immutables (they don't use storage)
@@ -344,7 +351,7 @@ export class StorageLayoutAnalyzer {
       );
 
       // Check for storage gaps
-      const hasGap = /uint256\[\d+\]\s+private\s+__gap/i.test(code);
+      const hasGap = RE_STORAGE_GAP.test(code);
       if (!hasGap) {
         warnings.push('Consider adding storage gap: uint256[50] private __gap;');
       }

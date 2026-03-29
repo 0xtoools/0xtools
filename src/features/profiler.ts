@@ -47,6 +47,12 @@ export interface ProfilerReport {
   mostExpensiveTests: TestGasData[];
 }
 
+// Pre-compiled regex patterns — hoisted to module scope to avoid re-compilation per call
+const RE_GAS_SNAPSHOT_LINE = /^(\w+):(.+?)\s+\(gas:\s+(\d+)\)$/;
+const RE_FUNC_PARAMS = /\(.*\)$/;
+const RE_CONTRACT_HEADER = /^\|\s+(?:\S+:)?(\w+)\s+contract\s+\|/;
+const RE_SEPARATOR_LINE = /^\|[-|]+\|$/;
+
 export class RuntimeProfiler {
   /**
    * Parse forge test gas report (lightweight - no test execution)
@@ -102,14 +108,14 @@ export class RuntimeProfiler {
 
       // Match: ContractName:functionSignature (gas: 123456)
       // The function signature can include parameters like (uint256,address)
-      const match = line.match(/^(\w+):(.+?)\s+\(gas:\s+(\d+)\)$/);
+      const match = line.match(RE_GAS_SNAPSHOT_LINE);
       if (!match) {
         continue;
       }
 
       const [, contract, fullSignature, gas] = match;
       // Extract just the function name from the signature
-      const funcName = fullSignature.replace(/\(.*\)$/, '');
+      const funcName = fullSignature.replace(RE_FUNC_PARAMS, '');
       const gasValue = parseInt(gas);
 
       if (!contractMap.has(contract)) {
@@ -164,7 +170,7 @@ export class RuntimeProfiler {
       const line = lines[i].trim();
 
       // Match contract header: | src/Counter.sol:Counter contract |
-      const contractMatch = line.match(/^\|\s+(?:\S+:)?(\w+)\s+contract\s+\|/);
+      const contractMatch = line.match(RE_CONTRACT_HEADER);
       if (contractMatch) {
         // Flush previous contract
         if (currentContract && tests.size > 0) {
@@ -178,7 +184,7 @@ export class RuntimeProfiler {
       }
 
       // Skip separator lines
-      if (line.match(/^\|[-|]+\|$/)) {
+      if (RE_SEPARATOR_LINE.test(line)) {
         continue;
       }
 
@@ -200,7 +206,7 @@ export class RuntimeProfiler {
         // Next non-separator row has the actual numbers
         for (let j = i + 1; j < lines.length; j++) {
           const nextLine = lines[j].trim();
-          if (nextLine.match(/^\|[-|]+\|$/)) {
+          if (RE_SEPARATOR_LINE.test(nextLine)) {
             continue;
           }
           const nextParts = nextLine
@@ -234,7 +240,7 @@ export class RuntimeProfiler {
         }
 
         // Extract clean function name without params
-        const funcName = funcSignature.replace(/\(.*\)$/, '');
+        const funcName = funcSignature.replace(RE_FUNC_PARAMS, '');
 
         tests.set(funcSignature, {
           testName: funcName,

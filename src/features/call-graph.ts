@@ -35,6 +35,14 @@ export interface CallGraph {
   maxCallDepth: number;
 }
 
+// Pre-compiled regex patterns — hoisted to module scope to avoid re-compilation per call
+const RE_BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g;
+const RE_LINE_COMMENT = /\/\/.*/g;
+const RE_FUNC_DECL =
+  /function\s+(\w+)\s*\(([^)]*)\)\s*(public|external|internal|private)?\s*([\w\s,]*?)\s*(?:returns\s*\([^)]*\))?\s*{/g;
+const RE_INTERNAL_CALL = /\b(\w+)\s*\(/g;
+const RE_EXTERNAL_CALL = /(\w+)\.(\w+)\s*\(/g;
+
 export class CallGraphAnalyzer {
   /**
    * Analyze call graph from contract code (regex-based, lightweight)
@@ -79,14 +87,13 @@ export class CallGraphAnalyzer {
     }> = [];
 
     // Remove comments
-    const cleanCode = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
+    const cleanCode = code.replace(RE_BLOCK_COMMENT, '').replace(RE_LINE_COMMENT, '');
 
     // Match function declarations
-    const funcPattern =
-      /function\s+(\w+)\s*\(([^)]*)\)\s*(public|external|internal|private)?\s*([\w\s,]*?)\s*(?:returns\s*\([^)]*\))?\s*{/g;
+    RE_FUNC_DECL.lastIndex = 0;
 
     let match;
-    while ((match = funcPattern.exec(cleanCode)) !== null) {
+    while ((match = RE_FUNC_DECL.exec(cleanCode)) !== null) {
       const [fullMatch, name, params, visibility, modifiersStr] = match;
       const modifiers = modifiersStr
         ? modifiersStr.split(/\s+/).filter((m) => m.trim().length > 0)
@@ -169,9 +176,9 @@ export class CallGraphAnalyzer {
       const caller = graph.get(func.name)!;
 
       // Find internal function calls
-      const internalCallPattern = /\b(\w+)\s*\(/g;
+      RE_INTERNAL_CALL.lastIndex = 0;
       let callMatch;
-      while ((callMatch = internalCallPattern.exec(func.body)) !== null) {
+      while ((callMatch = RE_INTERNAL_CALL.exec(func.body)) !== null) {
         const calleeName = callMatch[1];
         if (graph.has(calleeName) && calleeName !== func.name) {
           caller.calls.push(calleeName);
@@ -180,9 +187,9 @@ export class CallGraphAnalyzer {
       }
 
       // Find external calls
-      const externalCallPattern = /(\w+)\.(\w+)\s*\(/g;
+      RE_EXTERNAL_CALL.lastIndex = 0;
       let extMatch;
-      while ((extMatch = externalCallPattern.exec(func.body)) !== null) {
+      while ((extMatch = RE_EXTERNAL_CALL.exec(func.body)) !== null) {
         const [, target, method] = extMatch;
         const isDelegate = func.body.includes(`${target}.delegatecall`);
 

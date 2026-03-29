@@ -398,7 +398,7 @@ export function createGasDiagnostics(
           `Function '${info.name}' has unbounded gas consumption`,
           vscode.DiagnosticSeverity.Warning
         );
-        diagnostic.source = 'SigScan';
+        diagnostic.source = '0xTools';
         diagnostic.code = 'unbounded-gas';
         diagnostics.push(diagnostic);
       }
@@ -414,7 +414,7 @@ export function createGasDiagnostics(
           `${info.name}: ${warning}`,
           vscode.DiagnosticSeverity.Information
         );
-        diagnostic.source = 'SigScan';
+        diagnostic.source = '0xTools';
         diagnostic.code = 'gas-warning';
         diagnostics.push(diagnostic);
       }
@@ -430,7 +430,7 @@ export function createGasDiagnostics(
           `Function '${info.name}' has very high gas cost (${info.gas.toLocaleString()} gas)`,
           vscode.DiagnosticSeverity.Hint
         );
-        diagnostic.source = 'SigScan';
+        diagnostic.source = '0xTools';
         diagnostic.code = 'high-gas';
         diagnostics.push(diagnostic);
       }

@@ -1,4 +1,4 @@
-# SigScan
+# 0xTools
 
 Solidity smart contract analysis tool — VS Code extension + CLI. Extracts function selectors, event topics, error selectors, and provides real-time gas estimation with inline decorations.
 

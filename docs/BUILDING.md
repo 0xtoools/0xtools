@@ -1,4 +1,4 @@
-# SigScan Extension - Installation & Building Guide
+# 0xTools Extension - Installation & Building Guide
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ code --install-extension sigscan-0.1.0.vsix --force
 
 1. Open VS Code
 2. Go to Extensions (`Ctrl+Shift+X`)
-3. Search for "SigScan"
+3. Search for "0xTools"
 4. Click "Install"
 
 ### Method 3: Install from GitHub Releases
@@ -303,13 +303,13 @@ In Extension Development Host window:
 #### 2. Check Extension Logs
 
 1. Open Output panel in VS Code
-2. Select "SigScan" from dropdown
+2. Select "0xTools" from dropdown
 3. Look for error messages
 
 #### 3. Test Extension Commands
 
 1. Open Command Palette (`Ctrl+Shift+P`)
-2. Type "SigScan" to see available commands
+2. Type "0xTools" to see available commands
 3. Test each command individually
 
 ### Build Environment Issues

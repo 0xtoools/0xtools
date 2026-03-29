@@ -21,6 +21,62 @@ interface FunctionBlock {
   fullDeclaration: string;
 }
 
+// Pre-compiled regex patterns — hoisted to module scope to avoid re-compilation per call
+const RE_FUNC_DECL = /function\s+(\w+)\s*\([^)]*\)[^{]*\{/g;
+
+// Balance tracking patterns
+const RE_BALANCE_VAR_1 =
+  /mapping\s*\([^)]*\)\s*(public\s+|private\s+|internal\s+)?(balances|_balances|balanceOf)\b/;
+const RE_BALANCE_VAR_2 =
+  /mapping\s*\([^)]*\)\s*(public\s+|private\s+|internal\s+)?_?balance[sS]?\b/;
+const RE_BALANCE_REF = /\b(balances|_balances|balanceOf)\s*\[/;
+const RE_TRANSFER_LIKE = /transfer|mint|burn|deposit|withdraw|send/i;
+
+// Ownership patterns
+const RE_OWNER_VAR = /\b(address)\s+(public\s+|private\s+|internal\s+)?_?owner\b/;
+const RE_ONLY_OWNER_MODIFIER = /modifier\s+onlyOwner\b/;
+const RE_ONLY_OWNER_USAGE = /\bonlyOwner\b/;
+const RE_MSG_SENDER_OWNER_1 = /require\s*\(\s*msg\.sender\s*==\s*_?owner\b/;
+const RE_MSG_SENDER_OWNER_2 = /require\s*\(\s*_?owner\s*==\s*msg\.sender\b/;
+const RE_MSG_SENDER_OWNER_3 = /if\s*\(\s*msg\.sender\s*!=\s*_?owner\b/;
+const RE_OWNER_CHECK = /\bonlyOwner\b|msg\.sender\s*==\s*_?owner|_?owner\s*==\s*msg\.sender/;
+const RE_TRANSFER_OWNERSHIP = /transferOwnership|renounceOwnership/i;
+
+// Reentrancy patterns
+const RE_NON_REENTRANT_MODIFIER = /modifier\s+nonReentrant\b/;
+const RE_NON_REENTRANT_USAGE = /\bnonReentrant\b/;
+const RE_LOCK_VAR =
+  /\b(bool|uint256)\s+(private\s+|internal\s+)?(_locked|_status|locked|_notEntered)\b/;
+const RE_REENTRANCY_IMPORT = /import\s+.*ReentrancyGuard/;
+const RE_REENTRANCY_INHERIT = /\bis\s+.*ReentrancyGuard\b/;
+const RE_STATE_WRITE_BRACKET = /\b\w+\s*\[.*?\]\s*=/;
+const RE_STATE_WRITE_SIMPLE = /\b\w+\s*=\s*/;
+const RE_EXT_CALL = /\.call\b/;
+const RE_EXT_TRANSFER = /\.transfer\b/;
+const RE_EXT_SEND = /\.send\b/;
+const RE_LOCK_VAR_NAMES = /\b(_locked|_status|locked|_notEntered)\b/;
+
+// Access control patterns
+const RE_HAS_ROLE = /\bhasRole\s*\(/;
+const RE_ONLY_ROLE = /\bonlyRole\b/;
+const RE_ACCESS_CONTROL_IMPORT = /import\s+.*AccessControl/;
+const RE_ACCESS_CONTROL_INHERIT = /\bis\s+.*AccessControl\b/;
+const RE_MSG_SENDER_REQUIRE_NON_OWNER = /require\s*\(\s*msg\.sender\s*==\s*(?!_?owner\b)\w+/;
+const RE_MSG_SENDER_REQUIRE_REVERSE = /require\s*\(\s*\w+\s*==\s*msg\.sender\b/;
+const RE_CUSTOM_MODIFIER = /modifier\s+only(?!Owner\b)\w+/;
+const RE_ACCESS_CHECK =
+  /\bhasRole\b|\bonlyRole\b|require\s*\(\s*msg\.sender\s*==|modifier\s+only\w+/;
+const RE_ONLY_CUSTOM = /\bonly(?!Owner\b)\w+/;
+
+// Pausable patterns
+const RE_WHEN_NOT_PAUSED = /\bwhenNotPaused\b/;
+const RE_WHEN_PAUSED = /\bwhenPaused\b/;
+const RE_PAUSED_VAR = /\bbool\s+(public\s+|private\s+|internal\s+)?_?paused\b/;
+const RE_PAUSABLE_IMPORT = /import\s+.*Pausable/;
+const RE_PAUSABLE_INHERIT = /\bis\s+.*Pausable\b/;
+const RE_PAUSE_FUNCTIONS = /function\s+(pause|unpause|_pause|_unpause)\s*\(/;
+const RE_PAUSE_FUNC_NAME = /^(pause|unpause|_pause|_unpause)$/;
+
 export class InvariantDetector {
   /**
    * Detect invariant patterns in Solidity source code.
@@ -70,10 +126,10 @@ export class InvariantDetector {
    */
   private extractFunctionBlocks(source: string, _lines: string[]): FunctionBlock[] {
     const blocks: FunctionBlock[] = [];
-    const funcRegex = /function\s+(\w+)\s*\([^)]*\)[^{]*\{/g;
+    RE_FUNC_DECL.lastIndex = 0;
     let match: RegExpExecArray | null;
 
-    while ((match = funcRegex.exec(source)) !== null) {
+    while ((match = RE_FUNC_DECL.exec(source)) !== null) {
       const name = match[1];
       const startOffset = match.index;
       const line = this.offsetToLine(source, startOffset);
@@ -149,10 +205,7 @@ export class InvariantDetector {
     functions: FunctionBlock[]
   ): InvariantInfo | null {
     // Check for balance-related state variables
-    const balanceVarPatterns = [
-      /mapping\s*\([^)]*\)\s*(public\s+|private\s+|internal\s+)?(balances|_balances|balanceOf)\b/,
-      /mapping\s*\([^)]*\)\s*(public\s+|private\s+|internal\s+)?_?balance[sS]?\b/,
-    ];
+    const balanceVarPatterns = [RE_BALANCE_VAR_1, RE_BALANCE_VAR_2];
 
     let hasBalanceVar = false;
     let firstLine = 0;
@@ -171,11 +224,9 @@ export class InvariantDetector {
 
     // Find functions that reference balance variables in transfer-like operations
     const relatedFunctions: string[] = [];
-    const balanceRefPattern = /\b(balances|_balances|balanceOf)\s*\[/;
-    const transferLikeNames = /transfer|mint|burn|deposit|withdraw|send/i;
 
     for (const func of functions) {
-      if (balanceRefPattern.test(func.body)) {
+      if (RE_BALANCE_REF.test(func.body)) {
         relatedFunctions.push(func.name);
       }
     }
@@ -184,13 +235,13 @@ export class InvariantDetector {
     if (relatedFunctions.length === 0) {
       // Check if any function name suggests transfer-like behavior
       for (const func of functions) {
-        if (transferLikeNames.test(func.name)) {
+        if (RE_TRANSFER_LIKE.test(func.name)) {
           relatedFunctions.push(func.name);
         }
       }
     }
 
-    const hasTransferFunctions = relatedFunctions.some((name) => transferLikeNames.test(name));
+    const hasTransferFunctions = relatedFunctions.some((name) => RE_TRANSFER_LIKE.test(name));
     const confidence: 'high' | 'medium' | 'low' = hasTransferFunctions
       ? 'high'
       : relatedFunctions.length > 0
@@ -219,24 +270,23 @@ export class InvariantDetector {
     functions: FunctionBlock[]
   ): InvariantInfo | null {
     // Check for owner state variable
-    const ownerVarPattern = /\b(address)\s+(public\s+|private\s+|internal\s+)?_?owner\b/;
-    const hasOwnerVar = ownerVarPattern.test(source);
+    const hasOwnerVar = RE_OWNER_VAR.test(source);
 
     if (!hasOwnerVar) {
       return null;
     }
 
-    const firstLine = this.findFirstLine(lines, ownerVarPattern);
+    const firstLine = this.findFirstLine(lines, RE_OWNER_VAR);
 
     // Check for onlyOwner modifier definition or usage
-    const hasOnlyOwnerModifier = /modifier\s+onlyOwner\b/.test(source);
-    const hasOnlyOwnerUsage = /\bonlyOwner\b/.test(source);
+    const hasOnlyOwnerModifier = RE_ONLY_OWNER_MODIFIER.test(source);
+    const hasOnlyOwnerUsage = RE_ONLY_OWNER_USAGE.test(source);
 
     // Check for msg.sender == owner pattern
     const hasMsgSenderCheck =
-      /require\s*\(\s*msg\.sender\s*==\s*_?owner\b/.test(source) ||
-      /require\s*\(\s*_?owner\s*==\s*msg\.sender\b/.test(source) ||
-      /if\s*\(\s*msg\.sender\s*!=\s*_?owner\b/.test(source);
+      RE_MSG_SENDER_OWNER_1.test(source) ||
+      RE_MSG_SENDER_OWNER_2.test(source) ||
+      RE_MSG_SENDER_OWNER_3.test(source);
 
     if (!hasOnlyOwnerModifier && !hasOnlyOwnerUsage && !hasMsgSenderCheck) {
       return null;
@@ -244,17 +294,16 @@ export class InvariantDetector {
 
     // Find functions that use onlyOwner or check owner
     const relatedFunctions: string[] = [];
-    const ownerCheckPattern = /\bonlyOwner\b|msg\.sender\s*==\s*_?owner|_?owner\s*==\s*msg\.sender/;
 
     for (const func of functions) {
-      if (ownerCheckPattern.test(func.fullDeclaration) || ownerCheckPattern.test(func.body)) {
+      if (RE_OWNER_CHECK.test(func.fullDeclaration) || RE_OWNER_CHECK.test(func.body)) {
         relatedFunctions.push(func.name);
       }
     }
 
     // Also check for ownership transfer functions
     for (const func of functions) {
-      if (/transferOwnership|renounceOwnership/i.test(func.name)) {
+      if (RE_TRANSFER_OWNERSHIP.test(func.name)) {
         if (!relatedFunctions.includes(func.name)) {
           relatedFunctions.push(func.name);
         }
@@ -294,18 +343,15 @@ export class InvariantDetector {
     const relatedFunctions: string[] = [];
 
     // Check for nonReentrant modifier
-    const hasNonReentrantModifier = /modifier\s+nonReentrant\b/.test(source);
-    const hasNonReentrantUsage = /\bnonReentrant\b/.test(source);
+    const hasNonReentrantModifier = RE_NON_REENTRANT_MODIFIER.test(source);
+    const hasNonReentrantUsage = RE_NON_REENTRANT_USAGE.test(source);
 
     // Check for lock/status state variables
-    const hasLockVar =
-      /\b(bool|uint256)\s+(private\s+|internal\s+)?(_locked|_status|locked|_notEntered)\b/.test(
-        source
-      );
+    const hasLockVar = RE_LOCK_VAR.test(source);
 
     // Check for ReentrancyGuard import or inheritance
     const hasReentrancyGuardImport =
-      /import\s+.*ReentrancyGuard/.test(source) || /\bis\s+.*ReentrancyGuard\b/.test(source);
+      RE_REENTRANCY_IMPORT.test(source) || RE_REENTRANCY_INHERIT.test(source);
 
     if (
       !hasNonReentrantModifier &&
@@ -319,11 +365,11 @@ export class InvariantDetector {
       for (const func of functions) {
         // Look for functions that do a state write then an external call
         const hasStateWrite =
-          /\b\w+\s*\[.*?\]\s*=/.test(func.body) || /\b\w+\s*=\s*/.test(func.body);
+          RE_STATE_WRITE_BRACKET.test(func.body) || RE_STATE_WRITE_SIMPLE.test(func.body);
         const hasExternalCall =
-          /\.call\b/.test(func.body) ||
-          /\.transfer\b/.test(func.body) ||
-          /\.send\b/.test(func.body);
+          RE_EXT_CALL.test(func.body) ||
+          RE_EXT_TRANSFER.test(func.body) ||
+          RE_EXT_SEND.test(func.body);
 
         if (hasStateWrite && hasExternalCall) {
           hasCEIPattern = true;
@@ -353,22 +399,22 @@ export class InvariantDetector {
 
     // Determine first line from the most specific pattern found
     if (hasNonReentrantModifier) {
-      firstLine = this.findFirstLine(lines, /modifier\s+nonReentrant\b/);
+      firstLine = this.findFirstLine(lines, RE_NON_REENTRANT_MODIFIER);
       confidence = 'high';
     } else if (hasReentrancyGuardImport) {
-      firstLine = this.findFirstLine(lines, /ReentrancyGuard/);
+      firstLine = this.findFirstLine(lines, RE_REENTRANCY_IMPORT);
       confidence = 'high';
     } else if (hasLockVar) {
-      firstLine = this.findFirstLine(lines, /\b(_locked|_status|locked|_notEntered)\b/);
+      firstLine = this.findFirstLine(lines, RE_LOCK_VAR_NAMES);
       confidence = 'medium';
     } else if (hasNonReentrantUsage) {
-      firstLine = this.findFirstLine(lines, /\bnonReentrant\b/);
+      firstLine = this.findFirstLine(lines, RE_NON_REENTRANT_USAGE);
       confidence = 'medium';
     }
 
     // Find functions that use nonReentrant
     for (const func of functions) {
-      if (/\bnonReentrant\b/.test(func.fullDeclaration)) {
+      if (RE_NON_REENTRANT_USAGE.test(func.fullDeclaration)) {
         relatedFunctions.push(func.name);
       }
     }
@@ -377,9 +423,9 @@ export class InvariantDetector {
     if (relatedFunctions.length === 0) {
       for (const func of functions) {
         const hasExternalCall =
-          /\.call\b/.test(func.body) ||
-          /\.transfer\b/.test(func.body) ||
-          /\.send\b/.test(func.body);
+          RE_EXT_CALL.test(func.body) ||
+          RE_EXT_TRANSFER.test(func.body) ||
+          RE_EXT_SEND.test(func.body);
         if (hasExternalCall) {
           relatedFunctions.push(func.name);
         }
@@ -408,18 +454,17 @@ export class InvariantDetector {
     functions: FunctionBlock[]
   ): InvariantInfo | null {
     // Check for role-based access control
-    const hasRolePattern = /\bhasRole\s*\(/.test(source);
-    const hasOnlyRolePattern = /\bonlyRole\b/.test(source);
+    const hasRolePattern = RE_HAS_ROLE.test(source);
+    const hasOnlyRolePattern = RE_ONLY_ROLE.test(source);
     const hasAccessControlImport =
-      /import\s+.*AccessControl/.test(source) || /\bis\s+.*AccessControl\b/.test(source);
+      RE_ACCESS_CONTROL_IMPORT.test(source) || RE_ACCESS_CONTROL_INHERIT.test(source);
 
     // Check for general require(msg.sender == ...) patterns (excluding owner which is handled separately)
     const hasMsgSenderRequire =
-      /require\s*\(\s*msg\.sender\s*==\s*(?!_?owner\b)\w+/.test(source) ||
-      /require\s*\(\s*\w+\s*==\s*msg\.sender\b/.test(source);
+      RE_MSG_SENDER_REQUIRE_NON_OWNER.test(source) || RE_MSG_SENDER_REQUIRE_REVERSE.test(source);
 
     // Check for modifier-based access control (excluding onlyOwner)
-    const hasCustomModifier = /modifier\s+only(?!Owner\b)\w+/.test(source);
+    const hasCustomModifier = RE_CUSTOM_MODIFIER.test(source);
 
     if (
       !hasRolePattern &&
@@ -447,14 +492,12 @@ export class InvariantDetector {
 
     // Find functions that reference access control
     const relatedFunctions: string[] = [];
-    const accessCheckPattern =
-      /\bhasRole\b|\bonlyRole\b|require\s*\(\s*msg\.sender\s*==|modifier\s+only\w+/;
 
     for (const func of functions) {
       if (
-        accessCheckPattern.test(func.fullDeclaration) ||
-        accessCheckPattern.test(func.body) ||
-        /\bonly(?!Owner\b)\w+/.test(func.fullDeclaration)
+        RE_ACCESS_CHECK.test(func.fullDeclaration) ||
+        RE_ACCESS_CHECK.test(func.body) ||
+        RE_ONLY_CUSTOM.test(func.fullDeclaration)
       ) {
         relatedFunctions.push(func.name);
       }
@@ -481,18 +524,17 @@ export class InvariantDetector {
     functions: FunctionBlock[]
   ): InvariantInfo | null {
     // Check for whenNotPaused / whenPaused modifier usage
-    const hasWhenNotPaused = /\bwhenNotPaused\b/.test(source);
-    const hasWhenPaused = /\bwhenPaused\b/.test(source);
+    const hasWhenNotPaused = RE_WHEN_NOT_PAUSED.test(source);
+    const hasWhenPaused = RE_WHEN_PAUSED.test(source);
 
     // Check for _paused / paused state variable
-    const hasPausedVar = /\bbool\s+(public\s+|private\s+|internal\s+)?_?paused\b/.test(source);
+    const hasPausedVar = RE_PAUSED_VAR.test(source);
 
     // Check for Pausable import or inheritance
-    const hasPausableImport =
-      /import\s+.*Pausable/.test(source) || /\bis\s+.*Pausable\b/.test(source);
+    const hasPausableImport = RE_PAUSABLE_IMPORT.test(source) || RE_PAUSABLE_INHERIT.test(source);
 
     // Check for pause/unpause functions
-    const hasPauseFunctions = /function\s+(pause|unpause|_pause|_unpause)\s*\(/.test(source);
+    const hasPauseFunctions = RE_PAUSE_FUNCTIONS.test(source);
 
     if (
       !hasWhenNotPaused &&
@@ -523,8 +565,8 @@ export class InvariantDetector {
 
     for (const func of functions) {
       if (
-        /\bwhenNotPaused\b/.test(func.fullDeclaration) ||
-        /\bwhenPaused\b/.test(func.fullDeclaration)
+        RE_WHEN_NOT_PAUSED.test(func.fullDeclaration) ||
+        RE_WHEN_PAUSED.test(func.fullDeclaration)
       ) {
         relatedFunctions.push(func.name);
       }
@@ -532,7 +574,7 @@ export class InvariantDetector {
 
     // Also add pause/unpause functions themselves
     for (const func of functions) {
-      if (/^(pause|unpause|_pause|_unpause)$/.test(func.name)) {
+      if (RE_PAUSE_FUNC_NAME.test(func.name)) {
         if (!relatedFunctions.includes(func.name)) {
           relatedFunctions.push(func.name);
         }

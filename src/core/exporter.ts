@@ -810,7 +810,7 @@ export class SignatureExporter {
   private async updateGitignore(rootPath: string, signaturesDir: string): Promise<void> {
     const gitignorePath = path.join(rootPath, '.gitignore');
     const relativePath = path.relative(rootPath, signaturesDir);
-    const gitignoreEntry = `\n# SigScan generated signatures\n${relativePath}/\n`;
+    const gitignoreEntry = `\n# 0xTools generated signatures\n${relativePath}/\n`;
 
     try {
       let gitignoreContent = '';

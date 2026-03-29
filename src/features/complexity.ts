@@ -11,6 +11,25 @@ export interface ComplexityMetrics {
   issues: string[];
 }
 
+// Pre-compiled regex patterns for cyclomatic complexity
+const RE_IF = /\bif\s*\(/g;
+const RE_ELSE_IF = /\belse\s+if\s*\(/g;
+const RE_FOR = /\bfor\s*\(/g;
+const RE_WHILE = /\bwhile\s*\(/g;
+const RE_TERNARY = /\?/g;
+const RE_LOGICAL_AND = /&&/g;
+const RE_LOGICAL_OR = /\|\|/g;
+
+// Pre-compiled regex patterns for cognitive complexity
+const RE_NESTING_KEYWORD = /\b(if|for|while|switch)\s*\(/;
+const RE_CLOSE_BRACE = /}/;
+const RE_LOGICAL_OPERATORS = /&&|\|\|/;
+const RE_THIS_CALL = /\bthis\.\w+\(/;
+
+// Pre-compiled regex patterns for LOC counting
+const RE_BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g;
+const RE_LINE_COMMENT = /\/\/.*/g;
+
 export class ComplexityAnalyzer {
   /**
    * Calculate cyclomatic complexity (McCabe complexity)
@@ -18,14 +37,22 @@ export class ComplexityAnalyzer {
   public calculateCyclomaticComplexity(code: string): number {
     let complexity = 1; // Base complexity
 
-    // Decision points
-    const ifStatements = (code.match(/\bif\s*\(/g) || []).length;
-    const elseStatements = (code.match(/\belse\s+if\s*\(/g) || []).length;
-    const forLoops = (code.match(/\bfor\s*\(/g) || []).length;
-    const whileLoops = (code.match(/\bwhile\s*\(/g) || []).length;
-    const ternary = (code.match(/\?/g) || []).length;
-    const logicalAnd = (code.match(/&&/g) || []).length;
-    const logicalOr = (code.match(/\|\|/g) || []).length;
+    // Decision points — reset lastIndex before each global regex use
+    RE_IF.lastIndex = 0;
+    RE_ELSE_IF.lastIndex = 0;
+    RE_FOR.lastIndex = 0;
+    RE_WHILE.lastIndex = 0;
+    RE_TERNARY.lastIndex = 0;
+    RE_LOGICAL_AND.lastIndex = 0;
+    RE_LOGICAL_OR.lastIndex = 0;
+
+    const ifStatements = (code.match(RE_IF) || []).length;
+    const elseStatements = (code.match(RE_ELSE_IF) || []).length;
+    const forLoops = (code.match(RE_FOR) || []).length;
+    const whileLoops = (code.match(RE_WHILE) || []).length;
+    const ternary = (code.match(RE_TERNARY) || []).length;
+    const logicalAnd = (code.match(RE_LOGICAL_AND) || []).length;
+    const logicalOr = (code.match(RE_LOGICAL_OR) || []).length;
 
     complexity +=
       ifStatements + elseStatements + forLoops + whileLoops + ternary + logicalAnd + logicalOr;
@@ -45,22 +72,22 @@ export class ComplexityAnalyzer {
 
     lines.forEach((line) => {
       // Track nesting
-      if (line.match(/\b(if|for|while|switch)\s*\(/)) {
+      if (RE_NESTING_KEYWORD.test(line)) {
         complexity += 1 + nestingLevel;
         nestingLevel++;
       }
 
-      if (line.match(/}/)) {
+      if (RE_CLOSE_BRACE.test(line)) {
         nestingLevel = Math.max(0, nestingLevel - 1);
       }
 
       // Logical operators increase complexity
-      if (line.match(/&&|\|\|/)) {
+      if (RE_LOGICAL_OPERATORS.test(line)) {
         complexity += 1;
       }
 
       // Recursion
-      if (line.match(/\bthis\.\w+\(/)) {
+      if (RE_THIS_CALL.test(line)) {
         complexity += 1;
       }
     });
@@ -74,8 +101,8 @@ export class ComplexityAnalyzer {
   public countLinesOfCode(code: string): number {
     // Remove comments
     const withoutComments = code
-      .replace(/\/\*[\s\S]*?\*\//g, '') // Block comments
-      .replace(/\/\/.*/g, ''); // Line comments
+      .replace(RE_BLOCK_COMMENT, '') // Block comments
+      .replace(RE_LINE_COMMENT, ''); // Line comments
 
     // Count non-empty lines
     return withoutComments.split('\n').filter((line) => line.trim().length > 0).length;

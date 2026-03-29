@@ -14,6 +14,16 @@ import {
   getContractNameFromPath,
 } from '../utils/helpers';
 
+// Pre-compiled regexes — hoisted to module level to avoid per-call allocation
+const CONTRACT_NAME_RE = /(contract|library|interface)\s+(\w+)/;
+const FUNCTION_RE =
+  /function\s+(\w+)\s*\((.*?)\)\s*(public|external|internal|private)?\s*(pure|view|payable|nonpayable)?\s*(?:returns\s*\((.*?)\))?\s*[{;]/gs;
+const CONSTRUCTOR_RE = /constructor\s*\((.*?)\)\s*(public|internal)?\s*(payable)?\s*[{]/gs;
+const MODIFIER_RE = /modifier\s+(\w+)\s*\((.*?)\)\s*[{]/gs;
+const EVENT_RE = /event\s+(\w+)\s*\((.*?)\)\s*;/gs;
+const ERROR_RE = /error\s+(\w+)\s*\((.*?)\)\s*;/gs;
+const NATSPEC_TAG_RE = /@(\w+(?::\w+)?)\s+([^\n@]*(?:\n(?!\s*@)[^\n@]*)*)/g;
+
 export class SolidityParser {
   /**
    * Parse a Solidity file and extract all signatures
@@ -58,7 +68,7 @@ export class SolidityParser {
    * Extract contract name from Solidity content
    */
   private extractContractName(content: string): string | null {
-    const contractMatch = content.match(/(contract|library|interface)\s+(\w+)/);
+    const contractMatch = content.match(CONTRACT_NAME_RE);
     return contractMatch ? contractMatch[2] : null;
   }
 
@@ -72,12 +82,11 @@ export class SolidityParser {
   ): FunctionSignature[] {
     const functions: FunctionSignature[] = [];
 
-    // Regex to match function declarations
-    const functionRegex =
-      /function\s+(\w+)\s*\((.*?)\)\s*(public|external|internal|private)?\s*(pure|view|payable|nonpayable)?\s*(?:returns\s*\((.*?)\))?\s*[{;]/gs;
+    // Reset lastIndex for global regex reuse
+    FUNCTION_RE.lastIndex = 0;
 
     let match;
-    while ((match = functionRegex.exec(content)) !== null) {
+    while ((match = FUNCTION_RE.exec(content)) !== null) {
       const [
         ,
         name,
@@ -110,8 +119,8 @@ export class SolidityParser {
     }
 
     // Also extract constructor
-    const constructorRegex = /constructor\s*\((.*?)\)\s*(public|internal)?\s*(payable)?\s*[{]/gs;
-    const constructorMatch = constructorRegex.exec(content);
+    CONSTRUCTOR_RE.lastIndex = 0;
+    const constructorMatch = CONSTRUCTOR_RE.exec(content);
     if (constructorMatch) {
       const [, inputsStr, visibility = 'public', payable] = constructorMatch;
       const inputs = this.parseParameters(inputsStr);
@@ -134,9 +143,9 @@ export class SolidityParser {
     }
 
     // Extract modifiers
-    const modifierRegex = /modifier\s+(\w+)\s*\((.*?)\)\s*[{]/gs;
+    MODIFIER_RE.lastIndex = 0;
     let modifierMatch;
-    while ((modifierMatch = modifierRegex.exec(content)) !== null) {
+    while ((modifierMatch = MODIFIER_RE.exec(content)) !== null) {
       const [, name, inputsStr] = modifierMatch;
       const inputs = this.parseParameters(inputsStr);
       const signature = normalizeFunctionSignature(name, inputs);
@@ -164,10 +173,10 @@ export class SolidityParser {
   private extractEvents(content: string, contractName: string, filePath: string): EventSignature[] {
     const events: EventSignature[] = [];
 
-    const eventRegex = /event\s+(\w+)\s*\((.*?)\)\s*;/gs;
+    EVENT_RE.lastIndex = 0;
 
     let match;
-    while ((match = eventRegex.exec(content)) !== null) {
+    while ((match = EVENT_RE.exec(content)) !== null) {
       const [, name, inputsStr] = match;
       const inputs = this.parseEventParameters(inputsStr);
       const signature = normalizeFunctionSignature(name, inputs);
@@ -195,10 +204,10 @@ export class SolidityParser {
   private extractErrors(content: string, contractName: string, filePath: string): ErrorSignature[] {
     const errors: ErrorSignature[] = [];
 
-    const errorRegex = /error\s+(\w+)\s*\((.*?)\)\s*;/gs;
+    ERROR_RE.lastIndex = 0;
 
     let match;
-    while ((match = errorRegex.exec(content)) !== null) {
+    while ((match = ERROR_RE.exec(content)) !== null) {
       const [, name, inputsStr] = match;
       const inputs = this.parseParameters(inputsStr);
       const signature = normalizeFunctionSignature(name, inputs);
@@ -343,7 +352,7 @@ export class SolidityParser {
     };
 
     // Parse tags
-    const tagRegex = /@(\w+(?::\w+)?)\s+([^\n@]*(?:\n(?!\s*@)[^\n@]*)*)/g;
+    NATSPEC_TAG_RE.lastIndex = 0;
     let tagMatch;
 
     // Collect text before first tag as @notice
@@ -361,7 +370,7 @@ export class SolidityParser {
       }
     }
 
-    while ((tagMatch = tagRegex.exec(commentBody)) !== null) {
+    while ((tagMatch = NATSPEC_TAG_RE.exec(commentBody)) !== null) {
       const tag = tagMatch[1].toLowerCase();
       const value = tagMatch[2].trim();
 

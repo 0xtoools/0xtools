@@ -1,6 +1,6 @@
-# Contributing to SigScan
+# Contributing to 0xTools
 
-First off, thank you for considering contributing to SigScan! 🎉
+First off, thank you for considering contributing to 0xTools! 🎉
 
 ## Code of Conduct
 

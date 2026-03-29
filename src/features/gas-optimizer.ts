@@ -8,6 +8,33 @@
 
 import { GasOptimizationSuggestion } from '../types';
 
+// Pre-compiled regex patterns — hoisted to module scope to avoid re-compilation per call
+const RE_EXTERNAL_FUNC = /function\s+\w+\s*\(([^)]*)\)\s*(?:external)[^{;]*[{;]/gs;
+const RE_MEMORY_PARAM =
+  /(?:bytes|string|uint\d*\[\]|int\d*\[\]|address\[\]|bool\[\]|\w+\[\])\s+memory\b/g;
+const RE_STATE_VAR_DECL =
+  /^\s*(?:(?:public|private|internal)\s+)?(address|uint\d*|int\d*|bool|bytes\d*)\s+(?:public|private|internal\s+)?(\w+)\s*;/;
+const RE_CONSTANT_OR_IMMUTABLE = /\b(constant|immutable)\b/;
+const RE_CONSTRUCTOR = /constructor\s*\([^)]*\)[^{]*\{/;
+const RE_LITERAL_INIT =
+  /^\s*(?:(?:public|private|internal)\s+)?(address|uint\d*|int\d*|bool|bytes\d*|string)\s+(?:public|private|internal\s+)?(\w+)\s*=\s*([^;]+);/;
+const RE_DECIMAL = /^\d+$/;
+const RE_HEX_LITERAL = /^0x[0-9a-fA-F]+$/;
+const RE_STRING_LITERAL = /^"[^"]*"$/;
+const RE_BOOL_LITERAL = /^(true|false)$/;
+const RE_ADDRESS_ZERO = /^address\(0\)$/;
+const RE_TYPE_MAX = /^type\(\w+\)\.\w+$/;
+const RE_REQUIRE_STRING = /\brequire\s*\([^,]+,\s*"[^"]*"\s*\)/;
+const RE_FOR_LOOP_INCREMENT = /\bfor\s*\([^;]*;[^;]*;\s*(\w+\+\+|\+\+\w+|\w+\s*\+=\s*1)\s*\)/;
+const RE_UNCHECKED = /\bunchecked\b/;
+const RE_STATE_VAR_NAMES =
+  /^\s*(?:mapping\([^)]+\)\s+|(?:address|uint\d*|int\d*|bool|bytes\d*|string)\s+)(?:public|private|internal\s+)?(\w+)\s*[;=]/gm;
+const RE_FUNC_BODY = /function\s+(\w+)\s*\([^)]*\)[^{]*\{/g;
+const RE_REQUIRE_REVERT_MSG = /\b(?:require|revert)\s*\([^"]*"([^"]+)"/;
+const RE_STRIP_BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g;
+const RE_STRIP_LINE_COMMENT = /\/\/.*/g;
+const RE_NON_NEWLINE = /[^\n]/g;
+
 export class GasOptimizer {
   /**
    * Analyze Solidity source code for gas optimization opportunities.
@@ -50,21 +77,20 @@ export class GasOptimizer {
 
     // Match function declarations that span potentially multiple lines
     const source = lines.join('\n');
-    const funcRegex = /function\s+\w+\s*\(([^)]*)\)\s*(?:external)[^{;]*[{;]/gs;
+    RE_EXTERNAL_FUNC.lastIndex = 0;
 
     let match;
-    while ((match = funcRegex.exec(source)) !== null) {
+    while ((match = RE_EXTERNAL_FUNC.exec(source)) !== null) {
       const params = match[1];
       if (!params) {
         continue;
       }
 
       // Check if any parameter uses memory where calldata would work
-      const memoryParamRegex =
-        /(?:bytes|string|uint\d*\[\]|int\d*\[\]|address\[\]|bool\[\]|\w+\[\])\s+memory\b/g;
+      RE_MEMORY_PARAM.lastIndex = 0;
 
       let paramMatch;
-      while ((paramMatch = memoryParamRegex.exec(params)) !== null) {
+      while ((paramMatch = RE_MEMORY_PARAM.exec(params)) !== null) {
         // Calculate the line number of the match
         const matchOffset = match.index + match[0].indexOf(params) + paramMatch.index;
         const lineNum = source.substring(0, matchOffset).split('\n').length;
@@ -98,12 +124,8 @@ export class GasOptimizer {
     const cleanSource = this.stripComments(source);
     const cleanLines = cleanSource.split('\n');
 
-    // Find state variable declarations (not already constant or immutable)
-    const stateVarRegex =
-      /^\s*(?:(?:public|private|internal)\s+)?(address|uint\d*|int\d*|bool|bytes\d*)\s+(?:public|private|internal\s+)?(\w+)\s*;/;
-
     // Find constructor body
-    const constructorMatch = cleanSource.match(/constructor\s*\([^)]*\)[^{]*\{/);
+    const constructorMatch = cleanSource.match(RE_CONSTRUCTOR);
     if (!constructorMatch) {
       return suggestions;
     }
@@ -118,11 +140,11 @@ export class GasOptimizer {
       const line = cleanLines[i];
 
       // Skip if already constant or immutable
-      if (/\b(constant|immutable)\b/.test(line)) {
+      if (RE_CONSTANT_OR_IMMUTABLE.test(line)) {
         continue;
       }
 
-      const varMatch = stateVarRegex.exec(line);
+      const varMatch = RE_STATE_VAR_DECL.exec(line);
       if (!varMatch) {
         continue;
       }
@@ -185,19 +207,15 @@ export class GasOptimizer {
     const cleanSource = this.stripComments(source);
     const cleanLines = cleanSource.split('\n');
 
-    // Match state variables initialized with a literal value
-    const literalInitRegex =
-      /^\s*(?:(?:public|private|internal)\s+)?(address|uint\d*|int\d*|bool|bytes\d*|string)\s+(?:public|private|internal\s+)?(\w+)\s*=\s*([^;]+);/;
-
     for (let i = 0; i < cleanLines.length; i++) {
       const line = cleanLines[i];
 
       // Skip if already constant or immutable
-      if (/\b(constant|immutable)\b/.test(line)) {
+      if (RE_CONSTANT_OR_IMMUTABLE.test(line)) {
         continue;
       }
 
-      const varMatch = literalInitRegex.exec(line);
+      const varMatch = RE_LITERAL_INIT.exec(line);
       if (!varMatch) {
         continue;
       }
@@ -207,12 +225,12 @@ export class GasOptimizer {
 
       // Check if initialization is a literal (number, hex, string, bool, address)
       const isLiteral =
-        /^\d+$/.test(initValue) || // decimal number
-        /^0x[0-9a-fA-F]+$/.test(initValue) || // hex literal
-        /^"[^"]*"$/.test(initValue) || // string literal
-        /^(true|false)$/.test(initValue) || // boolean
-        /^address\(0\)$/.test(initValue) || // address(0)
-        /^type\(\w+\)\.\w+$/.test(initValue); // type(...).max etc.
+        RE_DECIMAL.test(initValue) || // decimal number
+        RE_HEX_LITERAL.test(initValue) || // hex literal
+        RE_STRING_LITERAL.test(initValue) || // string literal
+        RE_BOOL_LITERAL.test(initValue) || // boolean
+        RE_ADDRESS_ZERO.test(initValue) || // address(0)
+        RE_TYPE_MAX.test(initValue); // type(...).max etc.
 
       if (!isLiteral) {
         continue;
@@ -253,7 +271,7 @@ export class GasOptimizer {
       const line = lines[i];
 
       // Match require statements with string messages
-      const requireMatch = /\brequire\s*\([^,]+,\s*"[^"]*"\s*\)/.exec(line);
+      const requireMatch = RE_REQUIRE_STRING.exec(line);
       if (requireMatch) {
         suggestions.push({
           line: i + 1,
@@ -285,9 +303,7 @@ export class GasOptimizer {
       const line = lines[i];
 
       // Match for loops with i++ or i += 1 or ++i that are NOT inside unchecked blocks
-      const forLoopMatch = /\bfor\s*\([^;]*;[^;]*;\s*(\w+\+\+|\+\+\w+|\w+\s*\+=\s*1)\s*\)/.exec(
-        line
-      );
+      const forLoopMatch = RE_FOR_LOOP_INCREMENT.exec(line);
       if (forLoopMatch) {
         // Check if already wrapped in unchecked (crude check: look for unchecked on nearby lines)
         const contextStart = Math.max(0, i - 2);
@@ -295,7 +311,7 @@ export class GasOptimizer {
         let hasUnchecked = false;
 
         for (let j = contextStart; j <= contextEnd; j++) {
-          if (/\bunchecked\b/.test(lines[j])) {
+          if (RE_UNCHECKED.test(lines[j])) {
             hasUnchecked = true;
             break;
           }
@@ -335,11 +351,10 @@ export class GasOptimizer {
 
     // Extract state variable names
     const stateVarNames = new Set<string>();
-    const stateVarRegex =
-      /^\s*(?:mapping\([^)]+\)\s+|(?:address|uint\d*|int\d*|bool|bytes\d*|string)\s+)(?:public|private|internal\s+)?(\w+)\s*[;=]/gm;
+    RE_STATE_VAR_NAMES.lastIndex = 0;
 
     let stateVarMatch;
-    while ((stateVarMatch = stateVarRegex.exec(cleanSource)) !== null) {
+    while ((stateVarMatch = RE_STATE_VAR_NAMES.exec(cleanSource)) !== null) {
       const name = stateVarMatch[1];
       // Filter out common false positives
       if (name && name.length > 1 && !/^(constant|immutable)$/.test(name)) {
@@ -352,10 +367,10 @@ export class GasOptimizer {
     }
 
     // Find function bodies and check for repeated reads
-    const funcBodyRegex = /function\s+(\w+)\s*\([^)]*\)[^{]*\{/g;
+    RE_FUNC_BODY.lastIndex = 0;
 
     let funcMatch;
-    while ((funcMatch = funcBodyRegex.exec(cleanSource)) !== null) {
+    while ((funcMatch = RE_FUNC_BODY.exec(cleanSource)) !== null) {
       const funcName = funcMatch[1];
       const bodyStart = funcMatch.index + funcMatch[0].length - 1;
       const funcBody = this.extractBracedBlock(cleanSource, bodyStart);
@@ -412,7 +427,7 @@ export class GasOptimizer {
       const line = lines[i];
 
       // Match require/revert with string message
-      const messageMatch = /\b(?:require|revert)\s*\([^"]*"([^"]+)"/.exec(line);
+      const messageMatch = RE_REQUIRE_REVERT_MSG.exec(line);
       if (messageMatch) {
         const message = messageMatch[1];
 
@@ -441,11 +456,11 @@ export class GasOptimizer {
    */
   private stripComments(source: string): string {
     return source
-      .replace(/\/\*[\s\S]*?\*\//g, (match) => {
+      .replace(RE_STRIP_BLOCK_COMMENT, (match) => {
         // Preserve line count by replacing with newlines
-        return match.replace(/[^\n]/g, ' ');
+        return match.replace(RE_NON_NEWLINE, ' ');
       })
-      .replace(/\/\/.*/g, '');
+      .replace(RE_STRIP_LINE_COMMENT, '');
   }
 
   /**
@@ -491,36 +506,38 @@ export class GasOptimizer {
       return `# Gas Optimization Report: ${fileName}\n\nNo optimization opportunities detected.\n`;
     }
 
-    let report = `# Gas Optimization Report: ${fileName}\n\n`;
-    report += `**${suggestions.length} optimization(s) found**\n\n`;
+    const lines: string[] = [
+      `# Gas Optimization Report: ${fileName}\n`,
+      `**${suggestions.length} optimization(s) found**\n`,
+    ];
 
     const warnings = suggestions.filter((s) => s.severity === 'warning');
     const infos = suggestions.filter((s) => s.severity === 'info');
 
     if (warnings.length > 0) {
-      report += '## Warnings\n\n';
-      report += '| Line | Rule | Message | Estimated Savings |\n';
-      report += '|------|------|---------|-------------------|\n';
+      lines.push('## Warnings\n');
+      lines.push('| Line | Rule | Message | Estimated Savings |');
+      lines.push('|------|------|---------|-------------------|');
 
       for (const s of warnings) {
         const savings = s.savings || 'N/A';
-        report += `| ${s.line} | ${s.rule} | ${s.message} | ${savings} |\n`;
+        lines.push(`| ${s.line} | ${s.rule} | ${s.message} | ${savings} |`);
       }
-      report += '\n';
+      lines.push('');
     }
 
     if (infos.length > 0) {
-      report += '## Suggestions\n\n';
-      report += '| Line | Rule | Message | Estimated Savings |\n';
-      report += '|------|------|---------|-------------------|\n';
+      lines.push('## Suggestions\n');
+      lines.push('| Line | Rule | Message | Estimated Savings |');
+      lines.push('|------|------|---------|-------------------|');
 
       for (const s of infos) {
         const savings = s.savings || 'N/A';
-        report += `| ${s.line} | ${s.rule} | ${s.message} | ${savings} |\n`;
+        lines.push(`| ${s.line} | ${s.rule} | ${s.message} | ${savings} |`);
       }
-      report += '\n';
+      lines.push('');
     }
 
-    return report;
+    return lines.join('\n');
   }
 }

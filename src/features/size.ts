@@ -13,6 +13,12 @@ export interface ContractSizeInfo {
   recommendations: string[];
 }
 
+// Pre-compiled regex patterns — hoisted to module scope to avoid re-compilation per call
+const RE_BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g;
+const RE_LINE_COMMENT = /\/\/.*/g;
+const RE_WHITESPACE = /\s+/g;
+const RE_LONG_REQUIRE_MSG = /require.*,\s*"[^"]{50,}"/;
+
 export class ContractSizeAnalyzer {
   private readonly SIZE_LIMIT = 24576; // 24KB in bytes
   private readonly WARNING_THRESHOLD = 0.9; // 90%
@@ -25,9 +31,9 @@ export class ContractSizeAnalyzer {
   public estimateSize(contractCode: string): number {
     // Remove comments and whitespace
     const cleanCode = contractCode
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/.*/g, '')
-      .replace(/\s+/g, ' ')
+      .replace(RE_BLOCK_COMMENT, '')
+      .replace(RE_LINE_COMMENT, '')
+      .replace(RE_WHITESPACE, ' ')
       .trim();
 
     // Rough estimation: ~60% of source code size converts to bytecode
@@ -75,7 +81,7 @@ export class ContractSizeAnalyzer {
     if (contractCode.includes('string')) {
       recommendations.push('Consider using bytes32 instead of string where possible');
     }
-    if (contractCode.match(/require.*,\s*"[^"]{50,}"/)) {
+    if (RE_LONG_REQUIRE_MSG.test(contractCode)) {
       recommendations.push('Long error messages increase size - consider custom errors');
     }
 

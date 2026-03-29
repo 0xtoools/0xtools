@@ -35,6 +35,79 @@ interface RunnerContractReport {
 }
 
 // ---------------------------------------------------------------------------
+// New subcommand types (matches runner/src/types.rs)
+// ---------------------------------------------------------------------------
+
+export interface StorageSlot {
+  slot: number;
+  offset: number;
+  access: 'read' | 'write' | 'readwrite';
+}
+
+export interface StorageLayoutReport {
+  contract: string;
+  slots: StorageSlot[];
+}
+
+export interface BasicBlock {
+  id: number;
+  start: number;
+  end: number;
+  successors: number[];
+  opcodes: string[];
+}
+
+export interface CfgReport {
+  contract: string;
+  blocks: BasicBlock[];
+}
+
+export interface CallEdge {
+  from_function: string;
+  to_address: string;
+  call_type: 'call' | 'staticcall' | 'delegatecall' | 'callcode';
+  offset: number;
+}
+
+export interface CallGraphReport {
+  contract: string;
+  edges: CallEdge[];
+}
+
+export interface DecodedValue {
+  type_name: string;
+  value: string;
+}
+
+export interface AbiDecodeResult {
+  selector: string | null;
+  function: string | null;
+  values: DecodedValue[];
+}
+
+export interface SignatureMatch {
+  selector: string;
+  signatures: string[];
+}
+
+export interface FuzzResult {
+  function: string;
+  selector: string;
+  rounds: number;
+  successes: number;
+  reverts: number;
+  halts: number;
+  min_gas: number;
+  max_gas: number;
+  avg_gas: number;
+}
+
+export interface FuzzReport {
+  contract: string;
+  results: FuzzResult[];
+}
+
+// ---------------------------------------------------------------------------
 // Session-level cache for runner availability
 // ---------------------------------------------------------------------------
 
@@ -456,4 +529,101 @@ function fallbackResult(filePath: string, source: string, errorMessage: string):
     errors: [errorMessage],
     warnings: [],
   };
+}
+
+// ---------------------------------------------------------------------------
+// New subcommand wrappers
+// ---------------------------------------------------------------------------
+
+/**
+ * Spawn the runner with a subcommand and arguments, returning parsed JSON.
+ */
+function spawnRunnerSubcommand<T>(args: string[]): Promise<T> {
+  const runnerPath = runnerPathCache || discoverRunnerPath();
+  if (!runnerPath) {
+    throw new Error('sigscan-runner binary not found');
+  }
+
+  return new Promise((resolve, reject) => {
+    execFile(
+      runnerPath,
+      args,
+      { timeout: 120_000, maxBuffer: 4 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err) {
+          reject(new Error(`sigscan-runner ${args[0]} failed: ${stderr || err.message}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(stdout));
+        } catch (parseErr) {
+          reject(
+            new Error(
+              `Failed to parse runner output: ${parseErr instanceof Error ? parseErr.message : 'unknown error'}`
+            )
+          );
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Analyze storage layout of a Solidity file.
+ * Returns storage slot information for each contract.
+ */
+export async function analyzeStorageWithRunner(filePath: string): Promise<StorageLayoutReport[]> {
+  return spawnRunnerSubcommand<StorageLayoutReport[]>(['storage-layout', filePath]);
+}
+
+/**
+ * Generate a control flow graph for contracts in a Solidity file.
+ * Returns basic blocks with edges for each contract.
+ */
+export async function buildCfgWithRunner(filePath: string): Promise<CfgReport[]> {
+  return spawnRunnerSubcommand<CfgReport[]>(['cfg', filePath]);
+}
+
+/**
+ * Build a call graph showing inter-contract calls.
+ * Returns call edges for each contract.
+ */
+export async function buildCallGraphWithRunner(filePath: string): Promise<CallGraphReport[]> {
+  return spawnRunnerSubcommand<CallGraphReport[]>(['call-graph', filePath]);
+}
+
+/**
+ * Decode ABI-encoded data.
+ * If types is provided, decodes using those types.
+ * Otherwise, attempts auto-detection via selector lookup.
+ */
+export async function decodeAbiWithRunner(data: string, types?: string): Promise<AbiDecodeResult> {
+  const args = ['abi-decode', data];
+  if (types) {
+    args.push('--types', types);
+  }
+  return spawnRunnerSubcommand<AbiDecodeResult>(args);
+}
+
+/**
+ * Look up a function signature by 4-byte selector or name.
+ * For selectors (e.g. "0xa9059cbb"), returns matching signatures.
+ * For names (e.g. "transfer"), returns matching selectors.
+ */
+export async function lookupSignatureWithRunner(
+  selector: string
+): Promise<SignatureMatch | SignatureMatch[]> {
+  return spawnRunnerSubcommand<SignatureMatch | SignatureMatch[]>(['sig-db', selector]);
+}
+
+/**
+ * Fuzz test contract functions with random inputs.
+ * Returns min/max/avg gas and success/revert/halt counts per function.
+ */
+export async function fuzzWithRunner(filePath: string, rounds?: number): Promise<FuzzReport[]> {
+  const args = ['fuzz', filePath];
+  if (rounds !== undefined) {
+    args.push('--rounds', rounds.toString());
+  }
+  return spawnRunnerSubcommand<FuzzReport[]>(args);
 }

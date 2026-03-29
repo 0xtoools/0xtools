@@ -12,8 +12,16 @@ clap = { version = "4.5.57", features = ["derive"] }
 color-eyre = "0.6.5"
 eyre = "0.6.12"
 hex = "0.4.3"
-revm = { version = "34.0.0", features = ["std"] }
+revm = { version = "34.0.0", default-features = false, features = ["std"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+rand = { version = "0.9", default-features = false, features = ["std", "thread_rng"] }
 tempfile = "3.24.0"
-toml = "0.9.11"
+toml = { version = "0.9.11", default-features = false, features = ["parse", "serde"] }
+
+[profile.release]
+opt-level = "z"          # optimize for size
+lto = true               # link-time optimization
+codegen-units = 1        # single codegen unit for best optimization
+panic = "abort"          # no unwinding overhead
+strip = true             # strip debug symbols

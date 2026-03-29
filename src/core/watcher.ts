@@ -15,6 +15,8 @@ export class FileWatcher extends EventEmitter {
   private watcher: chokidar.FSWatcher | null = null;
   private parser: SolidityParser;
   private isWatching = false;
+  private changeTimers: Map<string, NodeJS.Timeout> = new Map();
+  private static readonly CHANGE_DEBOUNCE_MS = 300;
 
   constructor() {
     super();
@@ -45,10 +47,25 @@ export class FileWatcher extends EventEmitter {
         this.emit('fileAdded', filePath, contractInfo);
       })
       .on('change', (filePath: string) => {
-        const contractInfo = this.parser.parseFile(filePath);
-        this.emit('fileChanged', filePath, contractInfo);
+        // Debounce change events to avoid redundant re-parses on rapid saves
+        const existing = this.changeTimers.get(filePath);
+        if (existing) {
+          clearTimeout(existing);
+        }
+        const timer = setTimeout(() => {
+          this.changeTimers.delete(filePath);
+          const contractInfo = this.parser.parseFile(filePath);
+          this.emit('fileChanged', filePath, contractInfo);
+        }, FileWatcher.CHANGE_DEBOUNCE_MS);
+        this.changeTimers.set(filePath, timer);
       })
       .on('unlink', (filePath: string) => {
+        // Cancel any pending change timer for the removed file
+        const pending = this.changeTimers.get(filePath);
+        if (pending) {
+          clearTimeout(pending);
+          this.changeTimers.delete(filePath);
+        }
         this.emit('fileRemoved', filePath);
       })
       .on('error', (error: Error) => {
@@ -62,6 +79,12 @@ export class FileWatcher extends EventEmitter {
    * Stop watching for file changes
    */
   public async stopWatching(): Promise<void> {
+    // Cancel all pending debounce timers
+    for (const timer of this.changeTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.changeTimers.clear();
+
     if (this.watcher) {
       await this.watcher.close();
       this.watcher = null;

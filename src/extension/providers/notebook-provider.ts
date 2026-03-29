@@ -1,5 +1,5 @@
 /**
- * SigScan Notebook Provider - VS Code notebook support for .sigscan files
+ * 0xTools Notebook Provider - VS Code notebook support for .sigscan files
  *
  * Provides a custom notebook serializer and execution controller for
  * interactive Solidity analysis notebooks. The .sigscan file format is
@@ -56,7 +56,7 @@ export class SigScanNotebookSerializer implements vscode.NotebookSerializer {
       return new vscode.NotebookData([
         new vscode.NotebookCellData(
           vscode.NotebookCellKind.Markup,
-          text || '# SigScan Notebook\n\nAdd code cells with commands like `scan ./contracts`.',
+          text || '# 0xTools Notebook\n\nAdd code cells with commands like `scan ./contracts`.',
           'markdown'
         ),
       ]);
@@ -66,7 +66,7 @@ export class SigScanNotebookSerializer implements vscode.NotebookSerializer {
       return new vscode.NotebookData([
         new vscode.NotebookCellData(
           vscode.NotebookCellKind.Markup,
-          '# SigScan Notebook',
+          '# 0xTools Notebook',
           'markdown'
         ),
       ]);
@@ -152,7 +152,7 @@ export class SigScanNotebookSerializer implements vscode.NotebookSerializer {
 export class SigScanNotebookController {
   public static readonly controllerId = 'sigscan-notebook-controller';
   public static readonly notebookType = 'sigscan-notebook';
-  public static readonly label = 'SigScan';
+  public static readonly label = '0xTools';
 
   private readonly controller: vscode.NotebookController;
   private executionOrder = 0;

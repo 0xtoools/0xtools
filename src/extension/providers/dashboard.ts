@@ -43,7 +43,7 @@ export class DashboardPanel {
 
     const panel = vscode.window.createWebviewPanel(
       DashboardPanel.viewType,
-      'SigScan Dashboard',
+      '0xTools Dashboard',
       vscode.ViewColumn.Beside,
       {
         enableScripts: true,
@@ -103,7 +103,7 @@ export class DashboardPanel {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';" />
-  <title>SigScan Dashboard</title>
+  <title>0xTools Dashboard</title>
   <style nonce="${nonce}">
     :root {
       --bg: var(--vscode-editor-background);
@@ -247,16 +247,16 @@ export class DashboardPanel {
 
   private renderEmpty(): string {
     return `
-      <h1>SigScan Dashboard</h1>
+      <h1>0xTools Dashboard</h1>
       <div class="empty-state">
         <p>No metrics data available.</p>
-        <p>Run "SigScan: Scan Project" to populate the dashboard.</p>
+        <p>Run "0xTools: Scan Project" to populate the dashboard.</p>
       </div>`;
   }
 
   private renderDashboard(data: DashboardData): string {
     return `
-      <h1>SigScan Dashboard</h1>
+      <h1>0xTools Dashboard</h1>
 
       ${this.renderSummaryCards(data)}
       ${this.renderGasDistribution(data.gasDistribution)}
