@@ -29,6 +29,8 @@ let complexityDecorationType: vscode.TextEditorDecorationType;
 let remixGasDecorationType: vscode.TextEditorDecorationType;
 let statusBarItem: vscode.StatusBarItem;
 let gasDecorationManager: GasDecorationManager;
+let securityAnalysisTimer: NodeJS.Timeout | undefined;
+let textChangeTimer: NodeJS.Timeout | undefined;
 
 // Lazy-loaded singletons for long-running services
 let _anvilManager: InstanceType<typeof import('../features/anvil-manager').AnvilManager> | null =
@@ -1898,7 +1900,6 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   // ─── Security analysis (only on save/open, 2s debounce) ──────────────────
-  let securityAnalysisTimer: NodeJS.Timeout | undefined;
   const lastSecurityHash = new Map<string, string>();
 
   function runSecurityAnalysis(editor: vscode.TextEditor) {
@@ -2084,7 +2085,6 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   // Real-time analysis on text change (debounced — 1500ms for WASM solc compilation)
-  let textChangeTimer: NodeJS.Timeout | undefined;
   const textChangeDisposable = vscode.workspace.onDidChangeTextDocument(async (event) => {
     const editor = vscode.window.activeTextEditor;
     if (editor && editor.document === event.document) {
@@ -2392,6 +2392,17 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
+  // Clear pending debounce timers
+  if (securityAnalysisTimer) {
+    clearTimeout(securityAnalysisTimer);
+  }
+  if (textChangeTimer) {
+    clearTimeout(textChangeTimer);
+  }
+
+  if (signatureTreeProvider) {
+    signatureTreeProvider.dispose();
+  }
   if (sigScanManager) {
     sigScanManager.dispose();
   }

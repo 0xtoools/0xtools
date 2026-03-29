@@ -117,7 +117,7 @@ export class SigScanManager {
     const config = vscode.workspace.getConfiguration('sigscan');
     const formats = config.get('outputFormats', ['txt', 'json']) as string[];
     const includeInternal = !config.get('excludeInternal', true);
-    const includePrivate = config.get('includePrivate', false) as boolean;
+    const includePrivate = !config.get('excludePrivate', true);
 
     for (const subProject of this.subProjects) {
       if (!subProject.scanResult || subProject.scanResult.totalContracts === 0) {

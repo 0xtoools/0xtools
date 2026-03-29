@@ -73,6 +73,16 @@
         "category": "0xTools"
       },
       {
+        "command": "sigscan.copySignature",
+        "title": "Copy Function Signature",
+        "category": "0xTools"
+      },
+      {
+        "command": "sigscan.copySelector",
+        "title": "Copy Function Selector",
+        "category": "0xTools"
+      },
+      {
         "command": "sigscan.generateABI",
         "title": "Generate ABI from Signatures",
         "category": "0xTools"
@@ -463,6 +473,12 @@
           "type": "string",
           "default": "",
           "description": "Path to the sigscan-runner binary. Leave empty for auto-discovery (bundled, PATH, or workspace)."
+        },
+        "sigscan.logLevel": {
+          "type": "string",
+          "default": "info",
+          "enum": ["debug", "info", "warn", "error"],
+          "description": "Log level for 0xTools output channel"
         },
         "sigscan.preferRunner": {
           "type": "boolean",
