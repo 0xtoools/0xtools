@@ -600,7 +600,7 @@
     "webpack-cli": "^5.0.0"
   },
   "dependencies": {
-    "chokidar": "^3.5.3",
+    "chokidar": "^5.0.0",
     "commander": "^9.4.1",
     "glob": "^8.0.3",
     "js-sha3": "^0.8.0",
