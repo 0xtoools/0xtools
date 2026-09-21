@@ -1,7 +1,8 @@
-// Deploy & interact wrapper. Uses ethers v6 for in-process signing and ABI
-// handling — cheap, typed, and works identically for the local anvil flow and
-// the testnet (keystore) flow. Read-only calls go through the JsonRpcProvider
-// directly (no signer required).
+// Deploy & interact wrapper. Uses ethers v6 for ABI handling and JSON-RPC.
+// Transactions sign on the node itself (eth_sendTransaction against unlocked
+// accounts, i.e. a local anvil): the extension never holds private keys,
+// keystore passwords, or any other key material. Read-only calls go through
+// the JsonRpcProvider directly (no signer required).
 
 import {
   AbiCoder,
@@ -9,18 +10,16 @@ import {
   ContractFactory,
   Interface,
   JsonRpcProvider,
-  Wallet,
   isAddress,
   type ContractRunner,
   type InterfaceAbi,
+  type JsonRpcSigner,
   type LogDescription,
   type TransactionReceipt,
 } from 'ethers';
 import type { AbiEntry } from './remix-port/tx-helper';
 
-export type SignerSource =
-  | { kind: 'privateKey'; privateKey: string }
-  | { kind: 'keystore'; json: string; password: string };
+export type SignerSource = { kind: 'node'; address: string };
 
 export interface DeployRequest {
   rpcUrl: string;
@@ -74,26 +73,29 @@ export interface CallResult {
   raw: string;
 }
 
-async function resolveSigner(source: SignerSource, provider: JsonRpcProvider): Promise<Wallet> {
-  if (source.kind === 'privateKey') {
-    return new Wallet(source.privateKey, provider);
-  }
-  // Keystore decryption via ethers — handles Web3 Secret Storage v3 (scrypt/PBKDF2)
-  const decrypted = await Wallet.fromEncryptedJson(source.json, source.password);
-  if (!(decrypted instanceof Wallet)) {
-    throw new Error('keystore did not decrypt to a single-account wallet');
-  }
-  return decrypted.connect(provider) as Wallet;
+async function resolveSigner(
+  source: SignerSource,
+  provider: JsonRpcProvider
+): Promise<JsonRpcSigner> {
+  // Node-side signing only: the account must be unlocked on the RPC node
+  // (anvil's dev accounts are). The extension never touches key material.
+  return provider.getSigner(source.address);
 }
 
 function serializeForJson(value: unknown): unknown {
-  if (typeof value === 'bigint') return value.toString();
-  if (Array.isArray(value)) return value.map(serializeForJson);
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+  if (Array.isArray(value)) {
+    return value.map(serializeForJson);
+  }
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as object)) {
       // skip numeric keys that mirror named keys in ethers Result objects
-      if (/^\d+$/.test(k)) continue;
+      if (/^\d+$/.test(k)) {
+        continue;
+      }
       out[k] = serializeForJson(v);
     }
     return out;
@@ -101,8 +103,13 @@ function serializeForJson(value: unknown): unknown {
   return value;
 }
 
-function decodeReceiptLogs(receipt: TransactionReceipt, abi: AbiEntry[]): SendResult['decodedLogs'] {
-  if (!receipt.logs || receipt.logs.length === 0) return [];
+function decodeReceiptLogs(
+  receipt: TransactionReceipt,
+  abi: AbiEntry[]
+): SendResult['decodedLogs'] {
+  if (!receipt.logs || receipt.logs.length === 0) {
+    return [];
+  }
   const iface = new Interface(abi as InterfaceAbi);
   const out: SendResult['decodedLogs'] = [];
   for (const log of receipt.logs) {
@@ -112,7 +119,9 @@ function decodeReceiptLogs(receipt: TransactionReceipt, abi: AbiEntry[]): SendRe
     } catch {
       continue;
     }
-    if (!parsed) continue;
+    if (!parsed) {
+      continue;
+    }
     const args: Record<string, unknown> = {};
     for (let i = 0; i < parsed.fragment.inputs.length; i++) {
       const name = parsed.fragment.inputs[i].name || i.toString();
@@ -125,16 +134,22 @@ function decodeReceiptLogs(receipt: TransactionReceipt, abi: AbiEntry[]): SendRe
 
 // ─── Revert decoding ─────────────────────────────────────────────────────
 
-const SELECTOR_ERROR = '0x08c379a0';   // Error(string)
-const SELECTOR_PANIC = '0x4e487b71';   // Panic(uint256)
+const SELECTOR_ERROR = '0x08c379a0'; // Error(string)
+const SELECTOR_PANIC = '0x4e487b71'; // Panic(uint256)
 
 function extractRevertData(err: unknown): string | null {
-  if (!err || typeof err !== 'object') return null;
+  if (!err || typeof err !== 'object') {
+    return null;
+  }
   const e = err as Record<string, unknown>;
-  if (typeof e.data === 'string') return e.data as string;
+  if (typeof e.data === 'string') {
+    return e.data as string;
+  }
   const info = e.info as Record<string, unknown> | undefined;
   const innerErr = info?.error as Record<string, unknown> | undefined;
-  if (typeof innerErr?.data === 'string') return innerErr.data as string;
+  if (typeof innerErr?.data === 'string') {
+    return innerErr.data as string;
+  }
   // Some providers nest one level deeper:
   const tx = e.transaction as Record<string, unknown> | undefined;
   if (typeof tx?.data === 'string' && (tx.data as string).length > 10) {
@@ -144,7 +159,9 @@ function extractRevertData(err: unknown): string | null {
 }
 
 function tryDecodeError(abi: AbiEntry[], data: string): string | null {
-  if (!data || !data.startsWith('0x') || data.length < 10) return null;
+  if (!data || !data.startsWith('0x') || data.length < 10) {
+    return null;
+  }
   try {
     const iface = new Interface(abi as never);
     const parsed = iface.parseError(data);
@@ -159,8 +176,12 @@ function tryDecodeError(abi: AbiEntry[], data: string): string | null {
 }
 
 function formatScalar(v: unknown): string {
-  if (typeof v === 'string') return v;
-  if (typeof v === 'bigint' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (typeof v === 'string') {
+    return v;
+  }
+  if (typeof v === 'bigint' || typeof v === 'number' || typeof v === 'boolean') {
+    return String(v);
+  }
   try {
     return JSON.stringify(v);
   } catch {
@@ -180,7 +201,9 @@ export function decodeRevert(abi: AbiEntry[], err: unknown): string {
   const data = extractRevertData(err);
   if (data && data !== '0x') {
     const custom = tryDecodeError(abi, data);
-    if (custom) return custom;
+    if (custom) {
+      return custom;
+    }
     if (data.toLowerCase().startsWith(SELECTOR_ERROR)) {
       try {
         const decoded = AbiCoder.defaultAbiCoder().decode(['string'], '0x' + data.slice(10));
@@ -210,16 +233,26 @@ export function decodeRevert(abi: AbiEntry[], err: unknown): string {
 
 function panicMessage(code: number): string {
   switch (code) {
-    case 0x01: return 'assert(false)';
-    case 0x11: return 'arithmetic overflow/underflow';
-    case 0x12: return 'division or modulo by zero';
-    case 0x21: return 'invalid enum value';
-    case 0x22: return 'malformed storage byte array';
-    case 0x31: return 'pop on empty array';
-    case 0x32: return 'array index out of bounds';
-    case 0x41: return 'out of memory (huge allocation)';
-    case 0x51: return 'call to uninitialized internal function';
-    default:   return 'unknown panic';
+    case 0x01:
+      return 'assert(false)';
+    case 0x11:
+      return 'arithmetic overflow/underflow';
+    case 0x12:
+      return 'division or modulo by zero';
+    case 0x21:
+      return 'invalid enum value';
+    case 0x22:
+      return 'malformed storage byte array';
+    case 0x31:
+      return 'pop on empty array';
+    case 0x32:
+      return 'array index out of bounds';
+    case 0x41:
+      return 'out of memory (huge allocation)';
+    case 0x51:
+      return 'call to uninitialized internal function';
+    default:
+      return 'unknown panic';
   }
 }
 
@@ -231,13 +264,21 @@ export async function deployContract(req: DeployRequest): Promise<DeployResult> 
     const wallet = await resolveSigner(req.signer, provider);
     const factory = new ContractFactory(req.abi as InterfaceAbi, req.bytecode, wallet);
     const overrides: Record<string, bigint> = {};
-    if (req.value !== undefined) overrides.value = req.value;
-    if (req.gasLimit !== undefined) overrides.gasLimit = req.gasLimit;
+    if (req.value !== undefined) {
+      overrides.value = req.value;
+    }
+    if (req.gasLimit !== undefined) {
+      overrides.gasLimit = req.gasLimit;
+    }
     const contract = await factory.deploy(...req.ctorArgs, overrides);
     const tx = contract.deploymentTransaction();
-    if (!tx) throw new Error('deployment transaction was not produced');
+    if (!tx) {
+      throw new Error('deployment transaction was not produced');
+    }
     const receipt = await tx.wait();
-    if (!receipt) throw new Error('deployment receipt was not produced');
+    if (!receipt) {
+      throw new Error('deployment receipt was not produced');
+    }
     const address = await contract.getAddress();
     return {
       address,
@@ -252,7 +293,9 @@ export async function deployContract(req: DeployRequest): Promise<DeployResult> 
 }
 
 export async function sendTransaction(req: SendRequest): Promise<SendResult> {
-  if (!isAddress(req.to)) throw new Error(`invalid address: ${req.to}`);
+  if (!isAddress(req.to)) {
+    throw new Error(`invalid address: ${req.to}`);
+  }
   const provider = new JsonRpcProvider(req.rpcUrl);
   try {
     // Verify the address actually has bytecode on this RPC's chain. Without
@@ -268,23 +311,31 @@ export async function sendTransaction(req: SendRequest): Promise<SendResult> {
     const wallet = await resolveSigner(req.signer, provider);
     const contract = new Contract(req.to, req.abi as InterfaceAbi, wallet as ContractRunner);
     const overrides: Record<string, bigint> = {};
-    if (req.value !== undefined) overrides.value = req.value;
-    if (req.gasLimit !== undefined) overrides.gasLimit = req.gasLimit;
+    if (req.value !== undefined) {
+      overrides.value = req.value;
+    }
+    if (req.gasLimit !== undefined) {
+      overrides.gasLimit = req.gasLimit;
+    }
     const fn = contract.getFunction(req.funcName);
     const tx = await fn(...req.args, overrides);
     const receipt = await tx.wait();
-    if (!receipt) throw new Error('transaction receipt was not produced');
+    if (!receipt) {
+      throw new Error('transaction receipt was not produced');
+    }
     return {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
       gasUsed: receipt.gasUsed.toString(),
       status: receipt.status === 1 ? 'success' : 'reverted',
       decodedLogs: decodeReceiptLogs(receipt, req.abi),
-      rawLogs: receipt.logs.map((l: { address: string; topics: ReadonlyArray<string>; data: string }) => ({
-        address: l.address,
-        topics: [...l.topics],
-        data: l.data,
-      })),
+      rawLogs: receipt.logs.map(
+        (l: { address: string; topics: ReadonlyArray<string>; data: string }) => ({
+          address: l.address,
+          topics: [...l.topics],
+          data: l.data,
+        })
+      ),
     };
   } finally {
     provider.destroy();
@@ -292,7 +343,9 @@ export async function sendTransaction(req: SendRequest): Promise<SendResult> {
 }
 
 export async function callFunction(req: CallRequest): Promise<CallResult> {
-  if (!isAddress(req.to)) throw new Error(`invalid address: ${req.to}`);
+  if (!isAddress(req.to)) {
+    throw new Error(`invalid address: ${req.to}`);
+  }
   const provider = new JsonRpcProvider(req.rpcUrl);
   try {
     // Same pre-check as sendTransaction — see explanation there.
@@ -306,7 +359,9 @@ export async function callFunction(req: CallRequest): Promise<CallResult> {
     const contract = new Contract(req.to, req.abi as InterfaceAbi, provider);
     const fn = contract.getFunction(req.funcName);
     const overrides: Record<string, bigint> = {};
-    if (req.value !== undefined) overrides.value = req.value;
+    if (req.value !== undefined) {
+      overrides.value = req.value;
+    }
     const result = await fn.staticCall(...req.args, overrides);
     return { decoded: serializeForJson(result), raw: '' };
   } finally {

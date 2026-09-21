@@ -32,7 +32,6 @@ export interface AnvilConfig {
 
 export interface AnvilAccount {
   address: string;
-  privateKey: string;
   balance: string;
 }
 
@@ -61,7 +60,6 @@ const OUTPUT_BUFFER_LIMIT = 64 * 1024;
 
 // Pre-compiled regexes for account parsing (used once at startup)
 const ADDR_REGEX = /\((\d+)\)\s+(0x[0-9a-fA-F]{40})\s+\(([^)]+)\)/g;
-const KEY_REGEX = /\((\d+)\)\s+(0x[0-9a-fA-F]{64})/g;
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -420,11 +418,10 @@ export class AnvilManager {
 
     if (this.accounts.length > 0) {
       lines.push('', '### Accounts', '');
-      lines.push('| # | Address | Private Key (first 10 chars) |');
-      lines.push('|---|---------|------------------------------|');
+      lines.push('| # | Address |');
+      lines.push('|---|---------|');
       this.accounts.forEach((acc, i) => {
-        const keyPreview = acc.privateKey.substring(0, 12) + '...';
-        lines.push(`| ${i} | \`${acc.address}\` | \`${keyPreview}\` |`);
+        lines.push(`| ${i} | \`${acc.address}\` |`);
       });
     }
 
@@ -483,24 +480,18 @@ export class AnvilManager {
   }
 
   /**
-   * Parse accounts and private keys from Anvil startup output.
+   * Parse account addresses from Anvil startup output.
    *
    * Anvil prints:
    *   Available Accounts
    *   ==================
    *   (0) 0x... (10000.000 ETH)
    *   ...
-   *
-   *   Private Keys
-   *   ==================
-   *   (0) 0x...
-   *   ...
    */
   private parseAccounts(output: string): void {
     this.accounts = [];
 
     const addresses: string[] = [];
-    const keys: string[] = [];
 
     // Parse addresses
     const accountsSection = output.split('Private Keys')[0] || '';
@@ -510,21 +501,13 @@ export class AnvilManager {
       addresses.push(match[2]);
     }
 
-    // Parse private keys
-    const keysSection = output.split('Private Keys')[1] || '';
-    KEY_REGEX.lastIndex = 0;
-    while ((match = KEY_REGEX.exec(keysSection)) !== null) {
-      keys.push(match[2]);
-    }
-
+    // Anvil's stdout also prints the dev private keys below the addresses; we
+    // deliberately never parse or retain them. Panel transactions sign on the
+    // node itself (eth_sendTransaction against anvil's unlocked accounts).
     const balance = String(this.config.balance || DEFAULT_BALANCE);
 
-    for (let i = 0; i < Math.min(addresses.length, keys.length); i++) {
-      this.accounts.push({
-        address: addresses[i],
-        privateKey: keys[i],
-        balance,
-      });
+    for (const address of addresses) {
+      this.accounts.push({ address, balance });
     }
   }
 

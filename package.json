@@ -2,7 +2,7 @@
   "name": "0xtools",
   "displayName": "0xTools - Solidity Developer Toolkit",
   "description": "The ultimate Solidity development toolkit — gas analysis, security audits, on-chain inspection, Foundry/Hardhat integration, and more",
-  "version": "0.0.6",
+  "version": "0.0.1",
   "publisher": "0xshubhs",
   "icon": "resources/icon.png",
   "engines": {

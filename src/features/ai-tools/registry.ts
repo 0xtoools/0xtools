@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import { glob } from 'glob';
 
 import { analyzeSource, runAudit, AuditFinding } from '../../cli/audit-command';
-import { SignatureParser } from '../../core/parser';
+import { SolidityParser } from '../../core/parser';
 import { FourByteLookup } from '../four-byte-lookup';
 import {
   keccakUtf8,
@@ -122,7 +122,7 @@ export function buildAiTools(): AiTool[] {
       },
       async run(args) {
         const p = str(args, 'path');
-        const parser = new SignatureParser();
+        const parser = new SolidityParser();
         const files = fs.statSync(p).isFile()
           ? [p]
           : await glob('**/*.sol', {

@@ -3,9 +3,9 @@ import { FeatureDeck } from "@/components/feature-deck";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Reveal } from "@/components/reveal";
 
-const VERSION = "0.0.6";
+const VERSION = "0.0.1";
 const VSIX_PATH = `/downloads/0xtools-${VERSION}.vsix`;
-const VSIX_SIZE = "1.1 MB";
+const VSIX_SIZE = "552 KB";
 const GITHUB = "https://github.com/0xtoools/0xtools";
 
 /* ---------- brand mark: the Selector Strip (24 grid · 4 cells · one lit) ---------- */
@@ -207,7 +207,7 @@ const STATS = [
   ["101", "COMMANDS"],
   ["25+", "SECURITY MODULES"],
   ["3-TIER", "GAS ENGINE"],
-  ["1.1 MB", "WHOLE VSIX"],
+  ["552 KB", "WHOLE VSIX"],
 ];
 
 function Stats() {

@@ -26,7 +26,6 @@ tsconfig.webview.json
 .gitignore
 .git/**
 CLAUDE.md
-CHANGELOG.md
 CONTRIBUTING.md
 
 # Test files
@@ -53,3 +52,8 @@ skills/**
 # Dev configs that add nothing at runtime
 .prettierignore
 .versionrc.json
+
+# CLI bundle never ships in the vsix: the shipped manifest has no `bin`, the
+# extension runtime never spawns it, and its second copy of ethers/ajv is
+# exactly the kind of surface marketplace malware scanners flag.
+dist/cli/**

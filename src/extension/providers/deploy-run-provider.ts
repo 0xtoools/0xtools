@@ -10,15 +10,7 @@ import { runBuild, detectProjectKind, type ProjectKind } from '../../features/bu
 import { parseBuildDiagnostics, groupByFile } from '../../features/build-diagnostics';
 import { discoverScripts, type ScriptEntry } from '../../features/script-discovery';
 import { runScript } from '../../features/script-runner';
-import {
-  getDefaultKeystoreDir,
-  listKeystores,
-  readKeystoreJson,
-  storePassword,
-  takePassword,
-  clearPassword,
-  isUnlocked,
-} from '../../features/keystore-discovery';
+import { listKeystores } from '../../features/keystore-discovery';
 import { fetchBalance, invalidateBalance } from '../../features/balance-cache';
 import { ensureRegistry } from '../../features/rpc-registry';
 import {
@@ -111,7 +103,6 @@ export class DeployRunViewProvider implements vscode.WebviewViewProvider {
   // created via ethers' encrypt() without an explicit address field). When we
   // decrypt one on unlock we capture the address here and overlay it on the
   // keystore list so subsequent UI / balance fetches have a real address to use.
-  private addressOverlay: Map<string, string> = new Map();
 
   // Deploy scripts discovered in the workspace + per-script run state.
   private scripts: ScriptEntry[] = [];
@@ -375,46 +366,6 @@ export class DeployRunViewProvider implements vscode.WebviewViewProvider {
       }
 
       case 'refreshKeystores':
-        return { kind: 'status', payload: this.currentStatus() };
-
-      case 'unlockKeystore': {
-        // Validate the password by attempting a decryption. We discard the
-        // wallet *after* capturing its address — that's the only way to learn
-        // the address for keystores whose JSON omits it (some ethers-encrypted
-        // ones do).
-        try {
-          const json = readKeystoreJson(this.keystorePathFor(req.name));
-          const { Wallet } = await import('ethers');
-          const wallet = await Wallet.fromEncryptedJson(json, req.password);
-          const addr = (wallet as { address?: string }).address;
-          if (addr) {
-            this.addressOverlay.set(req.name, addr);
-          }
-        } catch {
-          return { kind: 'error', message: 'invalid password' };
-        }
-        storePassword(req.name, req.password, (req.ttlMinutes ?? 15) * 60 * 1000);
-        // If the user already had this keystore selected with an empty address,
-        // patch the selection so the next sign call has something to use.
-        const known = this.addressOverlay.get(req.name);
-        if (
-          known &&
-          this.accountSelection.kind === 'keystore' &&
-          this.accountSelection.name === req.name &&
-          !this.accountSelection.address
-        ) {
-          this.accountSelection = { kind: 'keystore', name: req.name, address: known };
-        }
-        this.pushStatus();
-        if (this.network.kind !== 'anvil') {
-          void this.refreshBalanceFor(req.name);
-        }
-        return { kind: 'status', payload: this.currentStatus() };
-      }
-
-      case 'lockKeystore':
-        clearPassword(req.name);
-        this.pushStatus();
         return { kind: 'status', payload: this.currentStatus() };
 
       case 'refreshBalance': {
@@ -932,10 +883,10 @@ export class DeployRunViewProvider implements vscode.WebviewViewProvider {
     if (!raw) {
       return;
     }
-    const address = raw.address || this.addressOverlay.get(keystoreName) || '';
+    const address = raw.address;
     if (!address) {
       return;
-    } // address still unknown — wait for an unlock to learn it
+    } // keystore JSON carries no address; we never decrypt, so it stays unknown
     const key = this.balanceCacheKey(keystoreName, this.network.chainId);
     this.balanceStatusByKey.set(key, 'fetching');
     this.balanceErrorByKey.delete(key);
@@ -993,25 +944,19 @@ export class DeployRunViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    // Resolve the signer source. Foundry scripts need a private key or
-    // keystore; Hardhat scripts may use the project's hardhat.config network
+    // Resolve the signer source. Foundry scripts sign on the unlocked local
+    // node; Hardhat scripts may use the project's hardhat.config network
     // accounts, so 'none' is acceptable for them.
-    let signer:
-      | { kind: 'privateKey'; privateKey: string }
-      | { kind: 'keystore'; name: string; password: string }
-      | { kind: 'none' };
+    let signer: { kind: 'unlocked'; sender: string } | { kind: 'none' };
     try {
       const src = await this.resolveSignerSource();
-      if (src.kind === 'privateKey') {
-        signer = { kind: 'privateKey', privateKey: src.privateKey };
-      } else {
-        signer = {
-          kind: 'keystore',
-          name: this.accountSelection.kind === 'keystore' ? this.accountSelection.name : '',
-          password: src.password,
-        };
+      signer = { kind: 'unlocked', sender: src.address };
+    } catch (err) {
+      if (script.kind === 'foundry') {
+        // Surface the guidance (e.g. keystore accounts sign via forge in a
+        // terminal) instead of failing later with a generic message.
+        throw err;
       }
-    } catch {
       // Hardhat: fall back to 'none' so user's hardhat.config can provide accounts.
       signer = { kind: 'none' };
     }
@@ -1257,22 +1202,16 @@ export class DeployRunViewProvider implements vscode.WebviewViewProvider {
       if (!acc) {
         throw new Error('selected anvil account is unavailable');
       }
-      return { kind: 'privateKey', privateKey: acc.privateKey };
+      return { kind: 'node', address: acc.address };
     }
     if (sel.kind === 'keystore') {
-      const pwd = takePassword(sel.name);
-      if (!pwd) {
-        throw new Error(`keystore "${sel.name}" is locked — unlock it first`);
-      }
-      const json = readKeystoreJson(this.keystorePathFor(sel.name));
-      return { kind: 'keystore', json, password: pwd };
+      throw new Error(
+        'in-editor keystore signing was removed: the panel signs only through your local anvil node. ' +
+          `To broadcast with this account run \`forge script --account ${sel.name}\` in a terminal ` +
+          '(Foundry prompts for the password itself).'
+      );
     }
     throw new Error('no account selected');
-  }
-
-  private keystorePathFor(name: string): string {
-    // discovery validates these — but we still join here for the signing path
-    return path.join(getDefaultKeystoreDir(), name);
   }
 
   private appendTx(entry: TxLogEntry): void {
@@ -1293,13 +1232,9 @@ export class DeployRunViewProvider implements vscode.WebviewViewProvider {
     const state = anvil.getState();
     const chainId = this.network.chainId;
     const keystoreEntries: KeystoreInfo[] = listKeystores().map((k) => {
-      // Overlay the address learned from a prior unlock when the keystore JSON
-      // didn't include one (ethers-encrypted keystores often omit it).
-      const effectiveAddress = k.address || this.addressOverlay.get(k.name) || '';
       const info: KeystoreInfo = {
         name: k.name,
-        address: effectiveAddress,
-        unlocked: isUnlocked(k.name),
+        address: k.address,
       };
       if (chainId !== undefined && this.network.kind !== 'anvil') {
         const key = this.balanceCacheKey(k.name, chainId);
@@ -1362,7 +1297,6 @@ export class DeployRunViewProvider implements vscode.WebviewViewProvider {
         accounts: (state?.accounts ?? []).map((a) => ({
           address: a.address,
           balance: a.balance,
-          privateKeyAvailable: true,
         })),
       },
       selectedHardfork: this.selectedHardfork,

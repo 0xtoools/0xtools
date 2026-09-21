@@ -47,6 +47,10 @@ module.exports = (_env, argv) => {
             options: {
               // Skip type-checking during build (use `tsc --noEmit` separately)
               transpileOnly: true,
+              // Keep the tsconfig CommonJS emit. An es2020 override was tried to
+              // tree-shake ethers' HD-wallet code, but abi-guesser is CJS and
+              // require()s ethers, so webpack bundles a second full ethers copy
+              // and the bundle grows instead of shrinking.
             },
           },
         },

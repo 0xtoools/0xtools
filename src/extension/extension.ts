@@ -1297,7 +1297,7 @@ export function activate(context: vscode.ExtensionContext) {
       const cast = new CastIntegration();
       if (!(await cast.isAvailable())) {
         vscode.window.showErrorMessage(
-          'Cast not found. Install Foundry: curl -L https://foundry.paradigm.xyz | bash'
+          'Cast not found. Install Foundry from https://getfoundry.sh'
         );
         return;
       }
@@ -1364,7 +1364,7 @@ export function activate(context: vscode.ExtensionContext) {
       const anvil = _anvilManager!;
       if (!(await anvil.isAvailable())) {
         vscode.window.showErrorMessage(
-          'Anvil not found. Install Foundry: curl -L https://foundry.paradigm.xyz | bash'
+          'Anvil not found. Install Foundry from https://getfoundry.sh'
         );
         return;
       }

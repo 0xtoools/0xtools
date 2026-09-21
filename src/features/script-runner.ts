@@ -1,16 +1,14 @@
 // Runs a discovered deploy script and streams its output.
 //
 //   Foundry  → `forge script <relPath>:<Contract> --broadcast --rpc-url <url>
-//                --private-key <pk>` (or --account <name> --password-file <f>)
+//                --unlocked --sender <address>` (signing happens on the node;
+//                the extension never handles key material)
 //   Hardhat  → `npx hardhat run <relPath> --network <name>` (or default network)
 //
 // We parse stdout for newly-deployed contract addresses so the panel can
 // surface them in the tx log just like a manual deploy.
 
 import { spawn, type ChildProcess } from 'child_process';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 import type { ScriptEntry } from './script-discovery';
 
 export interface RunScriptOptions {
@@ -23,8 +21,7 @@ export interface RunScriptOptions {
   hardhatNetwork?: string;
   /** Signer source — used to choose the right CLI flag. */
   signer:
-    | { kind: 'privateKey'; privateKey: string }
-    | { kind: 'keystore'; name: string; password: string }
+    | { kind: 'unlocked'; sender: string } // node-side signing (anvil's unlocked accounts)
     | { kind: 'none' }; // hardhat scripts may use the hardhat config's own accounts
   /** Stream each output line back to the caller. */
   onLine?: (line: string, stream: 'stdout' | 'stderr') => void;
@@ -90,32 +87,9 @@ function parseTxHashes(line: string): string[] {
   return out;
 }
 
-/** Write the keystore password to a tempfile with mode 0600 so we can pass
- *  `--password-file` to forge without leaking via argv. Caller is responsible
- *  for deleting it; we wrap the spawn in a try/finally below. */
-function writePasswordFile(pwd: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), '0xtools-pw-'));
-  const file = path.join(dir, 'pw');
-  fs.writeFileSync(file, pwd, { mode: 0o600 });
-  return file;
-}
-
-function cleanupPasswordFile(p: string | undefined): void {
-  if (!p) {
-    return;
-  }
-  try {
-    fs.unlinkSync(p);
-    fs.rmdirSync(path.dirname(p));
-  } catch {
-    /* best-effort */
-  }
-}
-
 interface CommandSpec {
   cmd: string;
   args: string[];
-  passwordFile?: string;
 }
 
 function buildCommand(opts: RunScriptOptions): CommandSpec {
@@ -125,16 +99,14 @@ function buildCommand(opts: RunScriptOptions): CommandSpec {
       throw new Error('foundry script is missing its target — re-discover scripts');
     }
     const args = ['script', script.foundryTarget, '--rpc-url', rpcUrl, '--broadcast'];
-    if (signer.kind === 'privateKey') {
-      args.push('--private-key', signer.privateKey);
+    if (signer.kind === 'unlocked') {
+      args.push('--unlocked', '--sender', signer.sender);
       return { cmd: 'forge', args };
     }
-    if (signer.kind === 'keystore') {
-      const passwordFile = writePasswordFile(signer.password);
-      args.push('--account', signer.name, '--password-file', passwordFile);
-      return { cmd: 'forge', args, passwordFile };
-    }
-    throw new Error('foundry scripts require a private key or keystore — select an account');
+    throw new Error(
+      'foundry scripts sign on the local unlocked node: select an anvil account, ' +
+        'or run `forge script --account <name>` in a terminal for keystore accounts'
+    );
   }
   // Hardhat
   const args = ['hardhat', 'run', script.relPath];
@@ -172,7 +144,6 @@ export async function runScript(opts: RunScriptOptions): Promise<RunScriptResult
         env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
       });
     } catch (err) {
-      cleanupPasswordFile(spec.passwordFile);
       result.errorMessage = `failed to spawn ${spec.cmd}: ${err instanceof Error ? err.message : err}`;
       result.durationMs = Date.now() - started;
       resolve(result);
@@ -237,7 +208,6 @@ export async function runScript(opts: RunScriptOptions): Promise<RunScriptResult
 
     proc.on('error', (err) => {
       clearTimeout(timeout);
-      cleanupPasswordFile(spec.passwordFile);
       result.errorMessage = `process error: ${err.message}`;
       result.durationMs = Date.now() - started;
       resolve(result);
@@ -245,7 +215,6 @@ export async function runScript(opts: RunScriptOptions): Promise<RunScriptResult
 
     proc.on('close', (code) => {
       clearTimeout(timeout);
-      cleanupPasswordFile(spec.passwordFile);
       if (stdoutBuf.length > 0) {
         opts.onLine?.(stdoutBuf, 'stdout');
       }

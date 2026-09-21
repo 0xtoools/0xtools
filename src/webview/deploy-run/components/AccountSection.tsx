@@ -16,15 +16,11 @@ interface Props {
 }
 
 function shorten(addr: string): string {
-  if (!addr) return '— unlock to view';
+  if (!addr) return 'no address in keystore JSON';
   return addr.length < 14 ? addr : `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
 export function AccountSection({ network, anvil, keystores, selection, bus }: Props): JSX.Element {
-  const [pwd, setPwd] = useState('');
-  const [pwdFor, setPwdFor] = useState<string | null>(null);
-  const [pwdBusy, setPwdBusy] = useState(false);
-  const [pwdError, setPwdError] = useState<string | null>(null);
   // Tracks the most-recently-copied address so we can flash a transient ✓ on
   // the button that was clicked. Keyed by the address itself so the same chip
   // and the inline keystore row can share feedback state.
@@ -46,25 +42,6 @@ export function AccountSection({ network, anvil, keystores, selection, bus }: Pr
 
   async function selectKeystoreAccount(name: string, address: string): Promise<void> {
     await bus.request({ kind: 'selectAccount', selection: { kind: 'keystore', name, address } });
-  }
-
-  async function submitPassword(): Promise<void> {
-    if (!pwdFor) return;
-    setPwdBusy(true);
-    setPwdError(null);
-    try {
-      const res = await bus.request({ kind: 'unlockKeystore', name: pwdFor, password: pwd });
-      if (res.kind === 'error') {
-        setPwdError(res.message);
-        return;
-      }
-      const ks = keystores.find((k) => k.name === pwdFor);
-      if (ks) await selectKeystoreAccount(ks.name, ks.address);
-      setPwd('');
-      setPwdFor(null);
-    } finally {
-      setPwdBusy(false);
-    }
   }
 
   function refreshKeystores(): void {
@@ -116,8 +93,8 @@ export function AccountSection({ network, anvil, keystores, selection, bus }: Pr
         </div>
       )}
       {activeKeystore && (
-        <div className={`account-chip ${activeKeystore.unlocked ? 'on' : 'locked'}`}>
-          <span className="chip-icon">{activeKeystore.unlocked ? '🔓' : '🔐'}</span>
+        <div className="account-chip on">
+          <span className="chip-icon">🔑</span>
           <span className="chip-name" title={activeKeystore.name}>{activeKeystore.name}</span>
           <code className="chip-addr" title={activeKeystore.address}>
             {activeKeystore.address}
@@ -205,13 +182,12 @@ export function AccountSection({ network, anvil, keystores, selection, bus }: Pr
                     key={ks.name}
                     className={`account-row ${isSel ? 'selected' : ''}`}
                     onClick={() => {
-                      if (ks.unlocked) void selectKeystoreAccount(ks.name, ks.address);
-                      else setPwdFor(ks.name);
+                      void selectKeystoreAccount(ks.name, ks.address);
                     }}
                   >
                     <span style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
-                      <span title={ks.unlocked ? 'unlocked' : 'locked'} style={{ flexShrink: 0 }}>
-                        {ks.unlocked ? '🔓' : '🔐'}
+                      <span title="Foundry keystore" style={{ flexShrink: 0 }}>
+                        🔑
                       </span>
                       <code className="address" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {ks.name}
@@ -266,44 +242,17 @@ export function AccountSection({ network, anvil, keystores, selection, bus }: Pr
               })}
             </ul>
           )}
+          <div className="muted small">
+            Panel deploys sign via your local anvil node. To broadcast with a keystore account,
+            run <span className="mono">forge script --account &lt;name&gt;</span> in a terminal
+            (Foundry prompts for the password; it never passes through this extension).
+          </div>
           {selection.kind === 'keystore' && (
             <div className="hint">
               Balance refreshes when you switch accounts or networks · click ↻ to force-refresh
             </div>
           )}
         </>
-      )}
-
-      {pwdFor && (
-        <div className="modal-backdrop" onClick={() => !pwdBusy && setPwdFor(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h4>Unlock keystore: {pwdFor}</h4>
-            <input
-              type="password"
-              className="vsc-input mono"
-              placeholder="password"
-              value={pwd}
-              onChange={(e) => setPwd(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void submitPassword();
-              }}
-              autoFocus
-              disabled={pwdBusy}
-            />
-            <div className="muted small">
-              Password is kept in extension-host memory only — never written to disk, never sent back to the webview.
-            </div>
-            {pwdError && <div className="error-banner">⚠ {pwdError}</div>}
-            <div className="button-row" style={{ justifyContent: 'flex-end' }}>
-              <button className="vsc-button" disabled={pwdBusy} onClick={() => setPwdFor(null)}>
-                Cancel
-              </button>
-              <button className="vsc-button primary" disabled={pwdBusy || !pwd} onClick={() => void submitPassword()}>
-                {pwdBusy ? 'Unlocking…' : 'Unlock'}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </section>
   );

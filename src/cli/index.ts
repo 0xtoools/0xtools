@@ -37,7 +37,7 @@ program
   .description(
     'The ultimate Solidity development toolkit — gas analysis, security audits, on-chain inspection, Foundry/Hardhat integration, and more'
   )
-  .version('0.1.0');
+  .version(require('../../package.json').version);
 
 program
   .command('scan')

@@ -1,15 +1,15 @@
-// Enumerates Foundry keystores at ~/.foundry/keystores/ and provides an
-// ephemeral password cache that lives in the extension host process only —
-// never written to disk, never sent back to the webview.
+// Enumerates Foundry keystores at ~/.foundry/keystores/ (names and addresses
+// only). The extension never reads passwords or decrypts keystores: signing
+// with these accounts happens in Foundry itself (`forge script --account`).
 
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
 export interface KeystoreEntry {
-  name: string;       // filename in ~/.foundry/keystores/
-  address: string;    // 0x-prefixed checksum-agnostic
-  path: string;       // absolute path of the keystore file
+  name: string; // filename in ~/.foundry/keystores/
+  address: string; // 0x-prefixed checksum-agnostic
+  path: string; // absolute path of the keystore file
 }
 
 interface KeystoreV3 {
@@ -24,11 +24,15 @@ interface KeystoreV3 {
 }
 
 function isV3(obj: unknown): obj is KeystoreV3 {
-  if (!obj || typeof obj !== 'object') return false;
+  if (!obj || typeof obj !== 'object') {
+    return false;
+  }
   const o = obj as Record<string, unknown>;
   // Accept "version: 3" and "version: '3'" — both are seen in the wild.
   const v = o.version;
-  if (v !== 3 && v !== '3') return false;
+  if (v !== 3 && v !== '3') {
+    return false;
+  }
   // Either `crypto` (modern) or `Crypto` (legacy geth) with a ciphertext.
   const crypto =
     (o.crypto as Record<string, unknown> | undefined) ??
@@ -50,7 +54,9 @@ function extractAddress(parsed: KeystoreV3, filename: string): string {
     filename.split('--').pop(),
   ];
   for (const c of candidates) {
-    if (typeof c !== 'string') continue;
+    if (typeof c !== 'string') {
+      continue;
+    }
     const trimmed = c.trim().replace(/^0x/i, '');
     if (/^[0-9a-fA-F]{40}$/.test(trimmed)) {
       return '0x' + trimmed.toLowerCase();
@@ -65,7 +71,9 @@ export function getDefaultKeystoreDir(): string {
 }
 
 export function listKeystores(dir: string = getDefaultKeystoreDir()): KeystoreEntry[] {
-  if (!fs.existsSync(dir)) return [];
+  if (!fs.existsSync(dir)) {
+    return [];
+  }
   let entries: string[] = [];
   try {
     entries = fs.readdirSync(dir);
@@ -81,54 +89,23 @@ export function listKeystores(dir: string = getDefaultKeystoreDir()): KeystoreEn
     } catch {
       continue;
     }
-    if (!stat.isFile()) continue;
+    if (!stat.isFile()) {
+      continue;
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(fs.readFileSync(full, 'utf8'));
     } catch {
       continue;
     }
-    if (!isV3(parsed)) continue;
+    if (!isV3(parsed)) {
+      continue;
+    }
     const address = extractAddress(parsed, name);
     // Empty `address` is fine here — some keystores (e.g. ethers-encrypted ones
-    // without explicit metadata) don't ship one in the JSON. The provider will
-    // populate it later from the decrypted wallet on first unlock.
+    // without explicit metadata) don't ship one in the JSON, and we never
+    // decrypt, so the address simply stays unknown in the UI.
     out.push({ name, address, path: full });
   }
   return out;
-}
-
-export function readKeystoreJson(p: string): string {
-  return fs.readFileSync(p, 'utf8');
-}
-
-// ─── Ephemeral password session ───────────────────────────────────────────
-// Held only in this module's closure. Never persisted. Cleared on demand or
-// after a configurable idle timeout.
-
-type Cached = { password: string; expiresAt: number };
-const cache = new Map<string, Cached>();
-const DEFAULT_TTL_MS = 15 * 60 * 1000; // 15 minutes
-
-export function storePassword(keystoreName: string, password: string, ttlMs: number = DEFAULT_TTL_MS): void {
-  cache.set(keystoreName, { password, expiresAt: Date.now() + ttlMs });
-}
-
-export function takePassword(keystoreName: string): string | null {
-  const c = cache.get(keystoreName);
-  if (!c) return null;
-  if (Date.now() > c.expiresAt) {
-    cache.delete(keystoreName);
-    return null;
-  }
-  return c.password;
-}
-
-export function clearPassword(keystoreName?: string): void {
-  if (keystoreName) cache.delete(keystoreName);
-  else cache.clear();
-}
-
-export function isUnlocked(keystoreName: string): boolean {
-  return takePassword(keystoreName) !== null;
 }

@@ -7,13 +7,7 @@ export type { AbiEntry, AbiParameter } from '../features/remix-port/tx-helper';
 // Mirrors Remix's environment hardfork choices. Newer first to match Remix's UI order.
 // Each value is a valid anvil --hardfork name. Anvil also accepts `merge` as an alias for paris.
 export type HardforkName =
-  | 'osaka'
-  | 'prague'
-  | 'cancun'
-  | 'shanghai'
-  | 'paris'
-  | 'london'
-  | 'berlin';
+  'osaka' | 'prague' | 'cancun' | 'shanghai' | 'paris' | 'london' | 'berlin';
 
 export const ALL_HARDFORKS: ReadonlyArray<HardforkName> = [
   'osaka',
@@ -254,7 +248,7 @@ export interface AnvilStatus {
   rpcUrl?: string;
   chainId?: number;
   hardfork?: HardforkName;
-  accounts: Array<{ address: string; balance: string; privateKeyAvailable: boolean }>;
+  accounts: Array<{ address: string; balance: string }>;
 }
 
 export interface KeystoreBalance {
@@ -275,7 +269,6 @@ export type BalanceStatus = 'idle' | 'fetching' | 'ok' | 'error';
 export interface KeystoreInfo {
   name: string;
   address: string;
-  unlocked: boolean;
   /** Populated for the *currently active* network (anvil mode keeps using anvil's account list). */
   balance?: KeystoreBalance;
   balanceStatus?: BalanceStatus;
@@ -422,8 +415,6 @@ export type DeployRunRequest =
   | { kind: 'selectNetwork'; network: NetworkConfig }
   | { kind: 'selectAccount'; selection: AccountSelection }
   | { kind: 'refreshKeystores' }
-  | { kind: 'unlockKeystore'; name: string; password: string; ttlMinutes?: number }
-  | { kind: 'lockKeystore'; name?: string }
   | {
       kind: 'deployContract';
       contractKey: string;
