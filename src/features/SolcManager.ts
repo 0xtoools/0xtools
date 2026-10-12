@@ -840,15 +840,62 @@ export async function getCompilerForPragma(source: string): Promise<{
 }
 
 /**
+ * Standard-JSON settings are version-gated: solc rejects the ENTIRE input when
+ * it sees a key or value it does not know (`viaIR` before 0.8.13, `evmVersion:
+ * "paris"` before 0.8.18), which silently killed gas analysis for every
+ * older-pragma project. Minimum solc version per evmVersion name:
+ */
+const EVM_VERSION_MIN_SOLC: Record<string, string> = {
+  istanbul: '0.5.14',
+  berlin: '0.8.5',
+  london: '0.8.7',
+  paris: '0.8.18',
+  shanghai: '0.8.20',
+  cancun: '0.8.24',
+  prague: '0.8.27',
+};
+const VIA_IR_MIN_SOLC = '0.8.13';
+
+/** Extract the bare semver from any solc version string ('v0.6.6+commit.x' → '0.6.6'). */
+function semverOfSolc(version: string | undefined): string | null {
+  return version?.match(/\d+\.\d+\.\d+/)?.[0] ?? null;
+}
+
+/**
  * Compile source with correct outputs for gas analysis
  * Returns gas estimates, AST, and bytecode
+ *
+ * `solcVersion` is the compiler the input will be fed to; settings keys that
+ * version does not understand are omitted (solc then uses its own defaults).
+ * When the version is unknown, every gated key is omitted so the input stays
+ * valid for any compiler.
  */
 export function createCompilationInput(
   fileName: string,
   source: string,
-  settings?: CompilerSettings
+  settings?: CompilerSettings,
+  solcVersion?: string
 ): object {
   const optimizerSettings = settings?.optimizer ?? { enabled: true, runs: 200 };
+  const target = semverOfSolc(solcVersion);
+
+  let evmVersion: string | undefined = settings?.evmVersion;
+  if (evmVersion === undefined) {
+    evmVersion = target && semver.gte(target, EVM_VERSION_MIN_SOLC['paris']) ? 'paris' : undefined;
+  } else {
+    const min = EVM_VERSION_MIN_SOLC[evmVersion];
+    if (!target || (min !== undefined && semver.lt(target, min))) {
+      debug.log(`evmVersion "${evmVersion}" not supported by solc ${solcVersion}; omitted`);
+      evmVersion = undefined;
+    }
+  }
+
+  // viaIR: false is the compiler default everywhere, so the key is only ever
+  // needed when explicitly enabled on a compiler that knows it.
+  const viaIR =
+    settings?.viaIR === true && target !== null && semver.gte(target, VIA_IR_MIN_SOLC)
+      ? true
+      : undefined;
 
   return {
     language: 'Solidity',
@@ -857,8 +904,8 @@ export function createCompilationInput(
     },
     settings: {
       optimizer: optimizerSettings,
-      evmVersion: settings?.evmVersion ?? 'paris',
-      viaIR: settings?.viaIR ?? false,
+      ...(evmVersion !== undefined ? { evmVersion } : {}),
+      ...(viaIR !== undefined ? { viaIR } : {}),
       outputSelection: {
         '*': {
           '*': [
@@ -1393,10 +1440,9 @@ export async function compileWithGasAnalysis(
   importCallback?: (path: string) => { contents: string } | { error: string }
 ): Promise<CompilationOutput> {
   try {
-    // Create input — release the object immediately after serialization
-    let inputJson: string | null = JSON.stringify(
-      createCompilationInput(fileName, source, settings)
-    );
+    // The input is built AFTER the compiler version is known: its settings
+    // keys are gated on that version (see createCompilationInput).
+    let inputJson: string | null = null;
     let outputJson: string | null;
     let version: string;
 
@@ -1409,24 +1455,48 @@ export async function compileWithGasAnalysis(
         console.warn(`Using fallback compiler version: ${version}`);
       }
 
+      inputJson = JSON.stringify(createCompilationInput(fileName, source, settings, version));
       outputJson = importCallback
-        ? resolved.compiler.compile(inputJson!, { import: importCallback })
-        : resolved.compiler.compile(inputJson!);
-    } catch {
-      // solc-js not available — try native solc binary
-      const nativeResult = compileWithNativeSolc(inputJson!);
+        ? resolved.compiler.compile(inputJson, { import: importCallback })
+        : resolved.compiler.compile(inputJson);
+    } catch (solcJsError) {
+      // solc-js not available: try the native solc binary, but only when its
+      // version actually satisfies the file's pragma: compiling 0.6.x source
+      // with a native 0.8.x only manufactures a ParserError that hides the
+      // real failure reported here.
+      const reason = (solcJsError as Error).message;
+      console.warn(`solc-js compilation unavailable: ${reason}`);
+      const nativeVersion = tryNativeSolcVersion();
+      const pragma = parsePragmaFromSource(source);
+      let nativeCompatible = nativeVersion !== null;
+      if (nativeCompatible && pragma) {
+        try {
+          nativeCompatible = semver.satisfies(nativeVersion!, pragma);
+        } catch {
+          nativeCompatible = false;
+        }
+      }
+      const nativeResult = nativeCompatible
+        ? compileWithNativeSolc(
+            JSON.stringify(createCompilationInput(fileName, source, settings, nativeVersion!))
+          )
+        : null;
       if (nativeResult) {
         outputJson = nativeResult;
-        version = tryNativeSolcVersion() || 'native';
+        version = nativeVersion!;
       } else {
-        // No compiler available at all — regex fallback
+        // No usable compiler: regex fallback, surfacing the real error
         inputJson = null;
         const fallbackGasInfo = extractFunctionsWithRegex(source);
+        const nativeNote =
+          nativeVersion && !nativeCompatible
+            ? ` (native solc ${nativeVersion} does not satisfy pragma ${pragma})`
+            : '';
         return {
           success: false,
           version: 'none',
           gasInfo: fallbackGasInfo,
-          errors: ['No Solidity compiler available (install solc npm package or native solc)'],
+          errors: [`No usable Solidity compiler for this file: ${reason}${nativeNote}`],
           warnings: [],
         };
       }
